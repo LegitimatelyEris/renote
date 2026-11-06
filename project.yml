@@ -1,0 +1,28 @@
+name: Renote
+options:
+  bundleIdPrefix: com.eriskelmendi
+  deploymentTarget:
+    macOS: "26.0"
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+targets:
+  Renote:
+    type: application
+    platform: macOS
+    sources: [Renote]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.eriskelmendi.renote
+        PRODUCT_NAME: Renote
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Renote
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
+        INFOPLIST_KEY_NSDocumentsFolderUsageDescription: Renote keeps your notes as Markdown files in Documents/Renote.
+        ENABLE_HARDENED_RUNTIME: YES
+        ENABLE_APP_SANDBOX: NO
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: "-"

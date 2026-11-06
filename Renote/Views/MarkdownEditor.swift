@@ -74,6 +74,8 @@ struct MarkdownEditor: NSViewRepresentable {
         tv.drawsBackground = false
         tv.isRichText = false
         tv.allowsUndo = true
+        tv.insertionPointColor = .white
+        tv.selectedTextAttributes = [.backgroundColor: NSColor.white.withAlphaComponent(0.18)]
         tv.isAutomaticQuoteSubstitutionEnabled = false
         tv.isAutomaticDashSubstitutionEnabled = false
         tv.isAutomaticTextReplacementEnabled = false
@@ -179,7 +181,7 @@ enum Highlighter {
     static var baseAttributes: [NSAttributedString.Key: Any] {
         let p = NSMutableParagraphStyle()
         p.lineSpacing = 5
-        return [.font: baseFont, .foregroundColor: NSColor.labelColor, .paragraphStyle: p]
+        return [.font: baseFont, .foregroundColor: NSColor(white: 0.80, alpha: 1), .paragraphStyle: p]
     }
 
     private static func regex(_ pattern: String) -> NSRegularExpression {
@@ -200,7 +202,7 @@ enum Highlighter {
     static func apply(to storage: NSTextStorage, accent: NSColor) {
         let text = storage.string
         let full = NSRange(location: 0, length: (text as NSString).length)
-        let faded = NSColor.tertiaryLabelColor
+        let faded = NSColor(white: 0.36, alpha: 1)
         storage.beginEditing()
         storage.setAttributes(baseAttributes, range: full)
 
@@ -208,6 +210,7 @@ enum Highlighter {
             let level = (text as NSString).substring(with: m.range(at: 1)).count
             let size: CGFloat = [22, 19, 17, 15, 14, 14][level - 1]
             storage.addAttribute(.font, value: NSFont.monospacedSystemFont(ofSize: size, weight: .bold), range: m.range)
+            storage.addAttribute(.foregroundColor, value: NSColor.white, range: m.range)
             storage.addAttribute(.foregroundColor, value: faded, range: m.range(at: 1))
         }
         for m in marker.matches(in: text, range: full) {
@@ -215,6 +218,7 @@ enum Highlighter {
         }
         for m in bold.matches(in: text, range: full) {
             storage.addAttribute(.font, value: NSFont.monospacedSystemFont(ofSize: 14, weight: .bold), range: m.range(at: 2))
+            storage.addAttribute(.foregroundColor, value: NSColor.white, range: m.range(at: 2))
             storage.addAttribute(.foregroundColor, value: faded, range: m.range(at: 1))
             storage.addAttribute(.foregroundColor, value: faded, range: m.range(at: 3))
         }

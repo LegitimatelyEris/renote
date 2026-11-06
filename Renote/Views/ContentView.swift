@@ -23,6 +23,7 @@ struct ContentView: View {
         }
         .searchable(text: $store.search, placement: .sidebar, prompt: "Search notes")
         .tint(accent)
+        .preferredColorScheme(.dark)
         .alert("Rename note", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
             TextField("Name", text: $newName)
             Button("Rename") { if let renaming { store.rename(renaming, to: newName) } }
@@ -72,10 +73,9 @@ struct ContentView: View {
             switch store.mode {
             case .write:
                 MarkdownEditor(text: $store.text, controller: editor, accent: accent)
-                    .background(Color(nsColor: .textBackgroundColor))
+                    .background { Backdrop(accent: accent) }
             case .read:
                 ReaderView(store: store, accent: accent)
-                    .background(Color(nsColor: .textBackgroundColor))
             case .revise:
                 ReviseView(cards: store.blocks.flatMap(\.studyCards), accent: accent, title: currentTitle)
             }
@@ -111,21 +111,22 @@ private struct NoteRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            RoundedRectangle(cornerRadius: 2)
+            Circle()
                 .fill(NoteStore.accent(for: note.title))
-                .frame(width: 3)
-                .padding(.vertical, 2)
+                .frame(width: 6, height: 6)
+                .shadow(color: NoteStore.accent(for: note.title), radius: 4)
+                .padding(.top, 6)
             VStack(alignment: .leading, spacing: 3) {
                 Text(note.title)
-                    .font(.system(.body, design: .serif).weight(.semibold))
+                    .font(.system(size: 13, weight: .semibold))
                     .lineLimit(1)
                 Text(note.preview.isEmpty ? "Empty note" : note.preview)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.muted)
                     .lineLimit(2)
                 Text(note.modified, format: .relative(presentation: .named))
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.faint)
             }
         }
         .padding(.vertical, 4)

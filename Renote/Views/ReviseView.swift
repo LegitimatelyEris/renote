@@ -26,7 +26,7 @@ struct ReviseView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(accent.opacity(0.04))
+        .background { Backdrop(accent: accent) }
         .focusable()
         .focusEffectDisabled()
         .focused($focused)
@@ -46,10 +46,11 @@ struct ReviseView: View {
                 .font(.system(size: 40, weight: .light))
                 .foregroundStyle(accent)
             Text("Nothing to revise yet")
-                .font(.system(size: 22, weight: .semibold, design: .serif))
+                .font(.system(size: 22, weight: .semibold))
+                .foregroundStyle(Theme.ink)
             Text("Add a flashcard (Q: / A:), a definition (Term :: meaning),\na quiz, or hide words with {{gaps}} and they will show up here.")
                 .multilineTextAlignment(.center)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.muted)
         }
     }
 
@@ -58,15 +59,20 @@ struct ReviseView: View {
         return VStack(spacing: 28) {
             VStack(spacing: 10) {
                 HStack {
-                    Text(title).font(.system(.callout, design: .serif).weight(.semibold))
+                    Text(title).font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.ink)
                     Spacer()
                     Text(round > 1 ? "Round \(round) · \(index + 1) of \(deck.count)" : "\(index + 1) of \(deck.count)")
-                        .font(.system(.caption, design: .rounded).weight(.medium))
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
+                        .font(.system(size: 12, weight: .medium, design: .monospaced))
+                        .foregroundStyle(Theme.faint)
                 }
-                ProgressView(value: Double(index), total: Double(deck.count))
-                    .tint(accent)
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Theme.hairline)
+                        Capsule().fill(LinearGradient(colors: [accent.opacity(0.6), .white], startPoint: .leading, endPoint: .trailing))
+                            .frame(width: max(4, geo.size.width * Double(index) / Double(max(1, deck.count))))
+                    }
+                }
+                .frame(height: 3)
             }
             .frame(maxWidth: 560)
 
@@ -81,17 +87,20 @@ struct ReviseView: View {
                 if flipped {
                     Button { answer(knewIt: false) } label: {
                         Label("Again", systemImage: "arrow.uturn.backward")
+                            .foregroundStyle(Theme.ink)
                             .frame(minWidth: 120)
                     }
                     Button { answer(knewIt: true) } label: {
                         Label("Got it", systemImage: "checkmark")
                             .frame(minWidth: 120)
                     }
-                    .tint(accent)
+                    .tint(.white)
+                    .foregroundStyle(.black)
                     .buttonStyle(.glassProminent)
                 } else {
                     Button { flip() } label: {
                         Label("Show answer", systemImage: "arrow.trianglehead.2.clockwise.rotate.90")
+                            .foregroundStyle(Theme.ink)
                             .frame(minWidth: 200)
                     }
                     .buttonStyle(.glass)
@@ -101,8 +110,8 @@ struct ReviseView: View {
             .controlSize(.large)
 
             Text(flipped ? "← again   ·   → got it" : "space to flip")
-                .font(.system(.caption, design: .rounded))
-                .foregroundStyle(.tertiary)
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .foregroundStyle(Theme.faint)
         }
         .padding(40)
     }
@@ -111,19 +120,22 @@ struct ReviseView: View {
         let score = cards.isEmpty ? 0 : Int((Double(known.count) / Double(cards.count) * 100).rounded())
         return VStack(spacing: 18) {
             ZStack {
-                Circle().stroke(accent.opacity(0.15), lineWidth: 10)
+                Circle().stroke(Theme.hairline, lineWidth: 6)
                 Circle().trim(from: 0, to: Double(score) / 100)
-                    .stroke(accent, style: StrokeStyle(lineWidth: 10, lineCap: .round))
+                    .stroke(AngularGradient(colors: [accent, .white], center: .center), style: StrokeStyle(lineWidth: 6, lineCap: .round))
                     .rotationEffect(.degrees(-90))
                 Text("\(score)%")
-                    .font(.system(size: 30, weight: .bold, design: .rounded))
+                    .font(.system(size: 30, weight: .semibold))
                     .monospacedDigit()
+                    .foregroundStyle(Theme.ink)
             }
             .frame(width: 120, height: 120)
             Text(score == 100 ? "All done. You know this note." : "Round complete")
-                .font(.system(size: 24, weight: .semibold, design: .serif))
+                .font(.system(size: 26, weight: .semibold))
+                .tracking(-0.5)
+                .foregroundStyle(Theme.ink)
             Text("\(known.count) of \(cards.count) cards known" + (again.isEmpty ? "" : " · \(again.count) to go again"))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.muted)
             HStack(spacing: 12) {
                 if !again.isEmpty {
                     Button("Revise the \(again.count) missed") {
@@ -132,7 +144,8 @@ struct ReviseView: View {
                         }
                     }
                     .buttonStyle(.glassProminent)
-                    .tint(accent)
+                    .tint(.white)
+                    .foregroundStyle(.black)
                 }
                 Button("Start over") { withAnimation(.snappy) { start(cards) } }
                     .buttonStyle(.glass)
@@ -203,9 +216,10 @@ private struct CardFace: View {
                 }
             case .definition:
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Define").font(.system(.callout, design: .rounded)).foregroundStyle(.secondary)
+                    Text("Define").font(.system(size: 14)).foregroundStyle(Theme.faint)
                     Text(Inline.render(card.front, .init(accent: accent)))
-                        .font(.system(size: 30, weight: .semibold, design: .serif))
+                        .font(.system(size: 34, weight: .semibold))
+                        .tracking(-0.8)
                 }
             case .flashcard:
                 Text(Inline.render(card.front, .init(accent: accent)))
@@ -217,48 +231,55 @@ private struct CardFace: View {
         face(dark: true) {
             switch card.kind {
             case .cloze:
-                Text(Inline.render(card.back, .init(accent: .white, revealCloze: true)))
+                Text(Inline.render(card.back, .init(accent: accent, revealCloze: true)))
             case .definition:
                 VStack(alignment: .leading, spacing: 10) {
-                    Text(Inline.render(card.front, .init(accent: .white)))
-                        .font(.system(size: 15, weight: .semibold, design: .rounded))
-                        .opacity(0.75)
-                    Text(Inline.render(card.back, .init(accent: .white)))
+                    Text(Inline.render(card.front, .init(accent: accent)))
+                        .font(.system(size: 14, weight: .semibold))
+                        .opacity(0.5)
+                    Text(Inline.render(card.back, .init(accent: accent)))
                 }
             default:
-                Text(Inline.render(card.back, .init(accent: .white)))
+                Text(Inline.render(card.back, .init(accent: accent)))
             }
         }
     }
 
-    private func face<Content: View>(dark: Bool, @ViewBuilder content: () -> Content) -> some View {
+    private func face<Content: View>(dark answer: Bool, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack {
-                Text(dark ? "ANSWER" : card.label.uppercased())
-                    .font(.system(.caption, design: .rounded).weight(.bold))
-                    .tracking(1.2)
+                Eyebrow(text: answer ? "Answer" : card.label, color: answer ? Color.black.opacity(0.45) : accent)
                 Spacer()
             }
-            .foregroundStyle(dark ? .white.opacity(0.75) : accent)
             Spacer(minLength: 0)
             content()
-                .font(.system(size: 24, weight: .medium, design: .serif))
+                .font(.system(size: 24, weight: .medium))
+                .tracking(-0.4)
                 .lineSpacing(6)
-                .foregroundStyle(dark ? .white : .primary)
+                .foregroundStyle(answer ? Color.black : Theme.ink)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
             Spacer(minLength: 0)
         }
-        .padding(32)
+        .padding(34)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background {
-            if dark {
-                RoundedRectangle(cornerRadius: 26).fill(accent.gradient)
-                    .shadow(color: accent.opacity(0.35), radius: 24, y: 12)
+            if answer {
+                // The answer side is the bright one, like a white pill button on a black page.
+                RoundedRectangle(cornerRadius: 26).fill(Color(white: 0.96))
+                    .shadow(color: .white.opacity(0.12), radius: 40, y: 0)
             } else {
-                RoundedRectangle(cornerRadius: 26).fill(.background)
-                    .shadow(color: .black.opacity(0.10), radius: 24, y: 12)
-                    .overlay(RoundedRectangle(cornerRadius: 26).strokeBorder(.primary.opacity(0.06)))
+                RoundedRectangle(cornerRadius: 26).fill(Color(white: 0.06))
+                    .shadow(color: .black.opacity(0.6), radius: 30, y: 16)
+            }
+        }
+        .overlay {
+            if !answer {
+                RoundedRectangle(cornerRadius: 26)
+                    .fill(RadialGradient(colors: [accent.opacity(0.18), .clear], center: .topLeading, startRadius: 0, endRadius: 420))
+                    .allowsHitTesting(false)
+                RoundedRectangle(cornerRadius: 26)
+                    .strokeBorder(LinearGradient(colors: [Color.white.opacity(0.18), Color.white.opacity(0.04)], startPoint: .top, endPoint: .bottom))
             }
         }
         .contentShape(Rectangle())

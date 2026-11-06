@@ -203,9 +203,10 @@ final class NoteStore {
     /// Accent colour for a note, stable per title.
     static func accent(for title: String) -> Color {
         let colors: [Color] = [
-            Color(red: 0.36, green: 0.42, blue: 0.95), Color(red: 0.93, green: 0.42, blue: 0.36),
-            Color(red: 0.20, green: 0.66, blue: 0.56), Color(red: 0.62, green: 0.40, blue: 0.90),
-            Color(red: 0.95, green: 0.62, blue: 0.20), Color(red: 0.90, green: 0.36, blue: 0.62),
+            // Warm and cool glows that read well on black.
+            Color(red: 1.00, green: 0.55, blue: 0.25), Color(red: 0.45, green: 0.60, blue: 1.00),
+            Color(red: 0.40, green: 0.88, blue: 0.70), Color(red: 0.72, green: 0.55, blue: 1.00),
+            Color(red: 1.00, green: 0.78, blue: 0.35), Color(red: 1.00, green: 0.48, blue: 0.62),
         ]
         let hash = title.unicodeScalars.reduce(5381) { ($0 &* 33) &+ Int($1.value) }
         return colors[abs(hash) % colors.count]

@@ -98,7 +98,8 @@ enum Inline {
                 case "`":
                     piece = AttributedString(String(inner))
                     piece.inlinePresentationIntent = .code
-                    piece.backgroundColor = Color.primary.opacity(0.07)
+                    piece.backgroundColor = Color.white.opacity(0.08)
+                    piece.foregroundColor = Color(white: 0.88)
                 case "{{":
                     piece = render(inner, o)
                     piece.backgroundColor = o.accent.opacity(o.revealCloze ? 0.18 : 0.85)
@@ -111,12 +112,19 @@ enum Inline {
                 case "**", "__":
                     piece = render(inner, o)
                     applyIntent(.stronglyEmphasized, to: &piece)
+                    // Bold lifts out of the grey body text to full white.
+                    for run in piece.runs where piece[run.range].foregroundColor == nil {
+                        piece[run.range].foregroundColor = .white
+                    }
                 case "~~":
                     piece = render(inner, o)
                     piece.strikethroughStyle = .single
                 case "==":
                     piece = render(inner, o)
-                    piece.backgroundColor = Color.yellow.opacity(0.35)
+                    piece.backgroundColor = Color(red: 1, green: 0.78, blue: 0.3).opacity(0.22)
+                    for run in piece.runs where piece[run.range].foregroundColor == nil {
+                        piece[run.range].foregroundColor = Color(red: 1, green: 0.88, blue: 0.6)
+                    }
                 case "++":
                     piece = render(inner, o)
                     piece.underlineStyle = Text.LineStyle(pattern: .solid, color: o.accent)

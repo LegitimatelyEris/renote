@@ -22,17 +22,20 @@ struct ReaderView: View {
                         .foregroundStyle(accent)
                     }
                 }
-                .font(.system(.caption, design: .rounded).weight(.medium))
-                .foregroundStyle(.secondary)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(Theme.faint)
                 .padding(.bottom, -6)
 
                 BlockList(blocks: blocks, accent: accent, store: store, numberSections: true)
             }
             .frame(maxWidth: 680, alignment: .leading)
-            .padding(.horizontal, 40)
-            .padding(.vertical, 44)
+            .padding(.horizontal, 44)
+            .padding(.vertical, 56)
+            .background { ColumnGuides() }
             .frame(maxWidth: .infinity)
         }
+        .scrollContentBackground(.hidden)
+        .background { Backdrop(accent: accent) }
         .textSelection(.enabled)
     }
 }
@@ -76,7 +79,8 @@ struct BlockView: View {
             } else {
                 Text(Inline.render(text, .init(accent: accent)))
                     .font(Theme.body)
-                    .lineSpacing(5)
+                    .foregroundStyle(Theme.muted)
+                    .lineSpacing(6)
                     .fixedSize(horizontal: false, vertical: true)
             }
         case let .list(items, ordered):
@@ -86,7 +90,7 @@ struct BlockView: View {
                 Capsule().fill(accent.opacity(0.5)).frame(width: 3)
                 Text(Inline.render(text, .init(accent: accent)))
                     .font(Theme.body.italic())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.muted)
                     .lineSpacing(5)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -97,7 +101,7 @@ struct BlockView: View {
             CodeBlock(language: language, text: text)
         case .divider:
             HStack(spacing: 8) {
-                ForEach(0..<3) { _ in Circle().fill(.tertiary).frame(width: 4, height: 4) }
+                ForEach(0..<3) { _ in Circle().fill(Theme.faint).frame(width: 3, height: 3) }
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 10)
@@ -130,30 +134,42 @@ struct HeadingView: View {
         switch level {
         case 1:
             Text(rendered)
-                .font(.system(size: 38, weight: .bold, design: .serif))
-                .tracking(-0.5)
-                .padding(.bottom, 4)
+                .font(Theme.display(44, .semibold))
+                .tracking(-1.2)
+                .foregroundStyle(
+                    LinearGradient(colors: [.white, Color(white: 0.72)], startPoint: .top, endPoint: .bottom)
+                )
+                .padding(.bottom, 6)
+                .modifier(BlurReveal())
         case 2:
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 8) {
                 if let section {
-                    Text(String(format: "%02d", section))
-                        .font(.system(.caption, design: .monospaced).weight(.semibold))
-                        .foregroundStyle(accent)
+                    HStack(spacing: 8) {
+                        Text(String(format: "%02d", section))
+                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(accent)
+                        Rectangle().fill(Theme.hairline).frame(height: 1)
+                    }
                 }
                 Text(rendered)
-                    .font(.system(size: 25, weight: .semibold, design: .serif))
+                    .font(Theme.display(28, .semibold))
+                    .tracking(-0.6)
+                    .foregroundStyle(Theme.ink)
             }
-            .padding(.top, 22)
+            .padding(.top, 28)
+            .modifier(BlurReveal())
         case 3:
             Text(rendered)
-                .font(.system(size: 19, weight: .semibold, design: .serif))
+                .font(Theme.display(19, .semibold))
+                .tracking(-0.3)
+                .foregroundStyle(Theme.ink)
                 .padding(.top, 10)
         default:
             Text(rendered)
-                .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                .font(.system(size: 12, weight: .semibold))
                 .textCase(.uppercase)
-                .tracking(0.8)
-                .foregroundStyle(.secondary)
+                .tracking(1)
+                .foregroundStyle(Theme.faint)
                 .padding(.top, 6)
         }
     }
@@ -167,7 +183,8 @@ struct ClozeParagraph: View {
     var body: some View {
         Text(Inline.render(text, .init(accent: accent, revealCloze: revealed)))
             .font(Theme.body)
-            .lineSpacing(5)
+            .foregroundStyle(Theme.muted)
+            .lineSpacing(6)
             .fixedSize(horizontal: false, vertical: true)
             .contentShape(Rectangle())
             .onTapGesture { withAnimation(.easeOut(duration: 0.2)) { revealed.toggle() } }
@@ -196,8 +213,8 @@ struct ListBlock: View {
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                     }
-                    .foregroundStyle(item.checked == true ? .secondary : .primary)
-                    .strikethrough(item.checked == true, color: .secondary)
+                    .foregroundStyle(item.checked == true ? Theme.faint : Theme.muted)
+                    .strikethrough(item.checked == true, color: Theme.faint)
                 }
                 .padding(.leading, CGFloat(item.indent) * 22)
             }
@@ -212,19 +229,19 @@ struct ListBlock: View {
             } label: {
                 Image(systemName: checked ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 15))
-                    .foregroundStyle(checked ? accent : .secondary)
+                    .foregroundStyle(checked ? accent : Theme.faint)
                     .contentTransition(.symbolEffect(.replace))
             }
             .buttonStyle(.plain)
         } else if ordered {
             Text("\(index + 1)")
-                .font(.system(.callout, design: .rounded).weight(.semibold))
-                .foregroundStyle(accent)
+                .font(.system(size: 13, weight: .medium, design: .monospaced))
+                .foregroundStyle(Theme.faint)
                 .frame(minWidth: 16, alignment: .trailing)
         } else {
-            Circle()
-                .fill(item.indent == 0 ? accent : accent.opacity(0.4))
-                .frame(width: 6, height: 6)
+            RoundedRectangle(cornerRadius: 1)
+                .fill(item.indent == 0 ? Theme.muted : Theme.faint)
+                .frame(width: 8, height: 1.5)
                 .alignmentGuide(.firstTextBaseline) { $0[.bottom] - 1 }
                 .frame(width: 16)
         }
@@ -248,9 +265,11 @@ struct CodeBlock: View {
                     .lineSpacing(3)
             }
         }
+        .foregroundStyle(Color(white: 0.85))
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.primary.opacity(0.045), in: .rect(cornerRadius: 12))
+        .background(Color.black.opacity(0.5), in: .rect(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.hairline))
     }
 }
 
@@ -264,19 +283,21 @@ struct TableBlock: View {
             GridRow {
                 ForEach(header.indices, id: \.self) { i in
                     Text(Inline.render(header[i], .init(accent: accent)))
-                        .font(.system(.caption, design: .rounded).weight(.semibold))
+                        .font(.system(size: 11, weight: .semibold))
                         .textCase(.uppercase)
-                        .foregroundStyle(.secondary)
-                        .padding(.vertical, 10)
+                        .tracking(0.8)
+                        .foregroundStyle(Theme.faint)
+                        .padding(.vertical, 12)
                 }
             }
             ForEach(rows.indices, id: \.self) { r in
-                Divider().gridCellUnsizedAxes(.horizontal)
+                Rectangle().fill(Theme.hairline).frame(height: 1).gridCellUnsizedAxes(.horizontal)
                 GridRow {
                     ForEach(header.indices, id: \.self) { c in
                         Text(Inline.render(c < rows[r].count ? rows[r][c] : "", .init(accent: accent)))
-                            .font(.system(size: 15))
-                            .padding(.vertical, 10)
+                            .font(.system(size: 14))
+                            .foregroundStyle(c == 0 ? Theme.ink : Theme.muted)
+                            .padding(.vertical, 12)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
@@ -284,8 +305,8 @@ struct TableBlock: View {
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 4)
-        .background(.primary.opacity(0.03), in: .rect(cornerRadius: 14))
-        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.primary.opacity(0.07)))
+        .background(Theme.surface, in: .rect(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Theme.hairline))
     }
 }
 
@@ -322,6 +343,88 @@ struct ImageBlock: View {
     }
 }
 
+/// Dark, quiet palette: near-black canvas, hairlines, grey body text with white emphasis.
 enum Theme {
-    static let body = Font.system(size: 17, design: .serif)
+    static let body = Font.system(size: 16, weight: .regular)
+    static let canvas = Color(red: 0.035, green: 0.035, blue: 0.04)
+    static let ink = Color.white
+    static let muted = Color(white: 0.62)
+    static let faint = Color(white: 0.38)
+    static let surface = Color.white.opacity(0.035)
+    static let hairline = Color.white.opacity(0.08)
+
+    static func display(_ size: CGFloat, _ weight: Font.Weight = .semibold) -> Font {
+        .system(size: size, weight: weight)
+    }
+}
+
+/// The page backdrop: black, a soft light bleeding from the top corner, a few specks.
+struct Backdrop: View {
+    var accent: Color
+
+    var body: some View {
+        ZStack {
+            Theme.canvas
+            RadialGradient(colors: [Color.white.opacity(0.10), .clear], center: .topLeading, startRadius: 0, endRadius: 700)
+            RadialGradient(colors: [accent.opacity(0.10), .clear], center: .top, startRadius: 0, endRadius: 520)
+                .offset(y: -200)
+            Canvas { ctx, size in
+                var rng = SplitMix(seed: 7)
+                for _ in 0..<70 {
+                    let p = CGPoint(x: rng.next() * size.width, y: rng.next() * size.height)
+                    let r = 0.5 + rng.next() * 0.9
+                    ctx.fill(Path(ellipseIn: CGRect(x: p.x, y: p.y, width: r, height: r)),
+                             with: .color(.white.opacity(0.08 + rng.next() * 0.22)))
+                }
+            }
+        }
+        .ignoresSafeArea()
+    }
+}
+
+/// Dashed vertical guides either side of the reading column.
+struct ColumnGuides: View {
+    var body: some View {
+        HStack {
+            dashed
+            Spacer()
+            dashed
+        }
+        .allowsHitTesting(false)
+    }
+
+    private var dashed: some View {
+        Rectangle()
+            .fill(.clear)
+            .frame(width: 1)
+            .overlay(
+                Path { p in p.move(to: .zero); p.addLine(to: CGPoint(x: 0, y: 4000)) }
+                    .stroke(Theme.hairline, style: StrokeStyle(lineWidth: 1, dash: [3, 4]))
+            )
+            .clipped()
+    }
+}
+
+/// Deterministic random numbers so the specks don't jump between redraws.
+struct SplitMix {
+    var state: UInt64
+    init(seed: UInt64) { state = seed }
+    mutating func next() -> Double {
+        state &+= 0x9E3779B97F4A7C15
+        var z = state
+        z = (z ^ (z >> 30)) &* 0xBF58476D1CE4E5B9
+        z = (z ^ (z >> 27)) &* 0x94D049BB133111EB
+        return Double((z ^ (z >> 31)) >> 11) / Double(1 << 53)
+    }
+}
+
+/// Text that sharpens out of a blur as it scrolls into view.
+struct BlurReveal: ViewModifier {
+    func body(content: Content) -> some View {
+        content.scrollTransition(.animated(.smooth(duration: 0.6)).threshold(.visible(0.2))) { view, phase in
+            view.blur(radius: phase.isIdentity ? 0 : 8)
+                .opacity(phase.isIdentity ? 1 : 0.25)
+                .offset(y: phase.isIdentity ? 0 : 8)
+        }
+    }
 }

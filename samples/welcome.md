@@ -1,6 +1,6 @@
 # Welcome to Renote
 
-Renote is plain **Markdown** with a few extras that make revision more fun. Write in *Write* mode, read it beautifully in *Read* mode, and test yourself in *Revise* mode.
+Renote is plain **Markdown** with a few extras that make revision more fun. Flip the switch in the corner to *Edit* and click anywhere on the page to write, then test yourself in *Revise*.
 
 ## Text formatting
 
@@ -30,8 +30,8 @@ Toggles hide extra detail until you need it. Start with `+++ Title` and finish w
 ## Lists and tables
 
 - [x] Tick checklist items right in Read mode
-- [ ] Use the chips in Write mode, or the box at the bottom of a note, to add components
-- [ ] Press 1, 2 and 3 to switch between Read, Write and Revise
+- [ ] In Edit mode, type / in an empty block to add components
+- [ ] Press ⌘E to switch between View and Edit, and Aa to change fonts
 
 | Syntax | Becomes |
 |---|---|

@@ -11,6 +11,7 @@ const ROOT = resolve(process.env.RENOTE_DIR || join(homedir(), 'Documents', 'Ren
 const PUBLIC = join(dirname(fileURLToPath(import.meta.url)), 'public');
 const PORT = Number(process.env.PORT || 4321);
 const LOG = join(ROOT, '.renote', 'log.json');
+const SETTINGS = join(ROOT, '.renote', 'settings.json');
 const NOTE_EXT = new Set(['.md', '.markdown', '.txt']);
 const TYPES = { '.html': 'text/html; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp' };
 
@@ -134,6 +135,16 @@ async function api(req, res, url) {
       await mkdir(dirname(LOG), { recursive: true });
       await writeFile(LOG, JSON.stringify(log, null, 2), 'utf8');
       return send(res, 201, { ok: true, count: log.length });
+    }
+    case 'GET /api/settings': {
+      try { return send(res, 200, JSON.parse(await readFile(SETTINGS, 'utf8'))); } catch { return send(res, 200, {}); }
+    }
+    case 'PUT /api/settings': {
+      // Fonts, size, width and accent chosen in the Aa panel.
+      const settings = await body(req);
+      await mkdir(dirname(SETTINGS), { recursive: true });
+      await writeFile(SETTINGS, JSON.stringify(settings, null, 2), 'utf8');
+      return send(res, 200, settings);
     }
     case 'GET /api/file': {
       // Images referenced from notes, e.g. ![](diagram.png)

@@ -83,9 +83,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         add(edit, title: "Edit", to: main)
 
         let view = NSMenu(title: "View")
-        view.addItem(item("Read", "1", #selector(modeRead)))
-        view.addItem(item("Write", "2", #selector(modeWrite)))
+        view.addItem(item("Toggle View / Edit", "e", #selector(toggleEdit)))
+        view.addItem(item("View", "1", #selector(modeRead)))
+        view.addItem(item("Edit", "2", #selector(modeWrite)))
         view.addItem(item("Revise", "3", #selector(modeRevise)))
+        view.addItem(.separator())
+        view.addItem(item("Fonts and Layout…", "t", #selector(showType)))
+        view.addItem(item("Toggle Sidebar", "\\", #selector(toggleSidebar)))
         view.addItem(.separator())
         view.addItem(item("All Notes", "0", #selector(home)))
         view.addItem(item("Progress", "p", #selector(progress), [.command, .shift]))
@@ -123,7 +127,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func newSubject() { web.call("newSubject()") }
     @objc private func search() { web.call("focusSearch()") }
     @objc private func modeRead() { web.call("setMode('read')") }
-    @objc private func modeWrite() { web.call("setMode('write')") }
+    @objc private func modeWrite() { web.call("setMode('edit')") }
+    @objc private func toggleEdit() { web.call("toggleEdit()") }
+    @objc private func showType() { web.call("showType()") }
+    @objc private func toggleSidebar() { web.call("toggleSidebar()") }
     @objc private func modeRevise() { web.call("setMode('revise')") }
     @objc private func home() { web.call("go('#/')") }
     @objc private func progress() { web.call("go('#/progress')") }

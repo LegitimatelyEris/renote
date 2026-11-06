@@ -31,13 +31,13 @@ Use `RENOTE_DIR=/some/folder npm start` to keep notes somewhere else, or `PORT=5
 
 ## What's in it
 
-- **Read**: each `##` section becomes a row of the grid, with the heading on the left and the content on the right. Flashcards flip, quizzes mark themselves, gaps reveal on click and checklists tick (and save).
-- **Write**: Markdown on the left, live preview on the right, plus chips for formatting and components. Saves as you type.
+- **A page, not a box**: each note is one blog-style page (title, lede, numbered sections). Flip the **View / Edit** switch in the bottom-right corner (or press ⌘E) and click any part of the page to edit it right there, in the page's own type. Enter starts a new block, Backspace at the start joins it to the one above, ↑/↓ move between blocks, and typing `/` in an empty block opens a menu of components. A small bar above the block you're editing does bold, italic, highlight, gaps and colours.
+- **Your type**: the **Aa** button sets the heading font and body font separately (Inter, Geist, Space Grotesk, Atkinson Hyperlegible, Newsreader, Literata, Fraunces, Instrument Serif, JetBrains Mono, IBM Plex Mono, Caveat), plus size, page width, line spacing and the accent colour. Saved to `.renote/settings.json`.
+- **View**: flashcards flip, quizzes mark themselves, gaps reveal on click and checklists tick (and save). The ⋯ menu has Edit as Markdown, Rename, Trash and Hide sidebar (⌘\\).
 - **Revise**: every flashcard, definition, quiz and gap in the note becomes a shuffled deck. Space flips, → means got it, ← means again.
 - **Progress**: every finished Revise session is logged to `.renote/log.json` in your notes folder, giving sessions, accuracy, a day streak and mastery per note. The banner at the top tells you what hasn't been revised this week.
-- **Add box**: at the bottom of every note, add text, a flashcard, a definition, a to-do, a gap or a section without leaving Read mode.
 
-Shortcuts: `/` search, `n` new note, `1` `2` `3` switch Read, Write and Revise, `⌘B` `⌘I` `⌘⇧H` `⌘⇧G` in the editor.
+Shortcuts: `⌘E` view/edit, `/` search, `n` new note, `1` `2` `3` view, edit, revise, `⌘\\` hide sidebar, and `⌘B` `⌘I` `⌘U` `⌘⇧H` `⌘⇧G` while editing.
 
 Deleted notes go to `.renote/trash` inside your notes folder, so nothing is lost.
 

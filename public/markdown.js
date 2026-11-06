@@ -44,12 +44,18 @@ export function parse(text) {
   const lines = text.replace(/\r\n/g, '\n').split('\n').map((l, i) => [i, l]);
   const make = (type, props) => ({ id: id++, type, ...props });
 
+  // Every block records the source lines it came from (start..end, inclusive),
+  // so the page editor can swap exactly those lines.
   function run(lines) {
     const blocks = [];
-    let para = [];
-    const flush = () => { if (para.length) { blocks.push(make('paragraph', { text: para.join(' ') })); para = []; } };
+    let para = [], paraStart = 0, paraEnd = 0;
+    const flush = () => {
+      if (para.length) { blocks.push(make('paragraph', { text: para.join(' '), start: paraStart, end: paraEnd })); para = []; }
+    };
+    const push = (block, from, to) => { block.start = lines[from][0]; block.end = lines[Math.max(from, to - 1)][0]; blocks.push(block); };
     let i = 0;
     while (i < lines.length) {
+      const i0 = i;
       const [lineNo, raw] = lines[i];
       const line = raw.trim();
       if (!line) { flush(); i++; continue; }
@@ -60,8 +66,8 @@ export function parse(text) {
         const body = [];
         i++;
         while (i < lines.length && !lines[i][1].trim().startsWith('```')) body.push(lines[i++][1]);
-        i++;
-        blocks.push(make('code', { lang, text: body.join('\n') }));
+        i = Math.min(i + 1, lines.length);
+        push(make('code', { lang, text: body.join('\n') }), i0, i);
         continue;
       }
       if (line.startsWith('+++')) {
@@ -70,13 +76,13 @@ export function parse(text) {
         const body = [];
         i++;
         while (i < lines.length && lines[i][1].trim() !== '+++') body.push(lines[i++]);
-        i++;
-        blocks.push(make('toggle', { title, body: run(body) }));
+        i = Math.min(i + 1, lines.length);
+        push(make('toggle', { title, body: run(body) }), i0, i);
         continue;
       }
       const h = heading(line);
-      if (h) { flush(); blocks.push(make('heading', { level: h[0], text: h[1], line: lineNo })); i++; continue; }
-      if (isDivider(line)) { flush(); blocks.push(make('divider')); i++; continue; }
+      if (h) { flush(); i++; push(make('heading', { level: h[0], text: h[1], line: lineNo }), i0, i); continue; }
+      if (isDivider(line)) { flush(); i++; push(make('divider'), i0, i); continue; }
 
       if (line.startsWith('>')) {
         flush();
@@ -90,9 +96,9 @@ export function parse(text) {
         const m = /^\[!(\w+)\][+-]?\s*(.*)$/.exec(quoted[0][1]);
         if (m) {
           const style = calloutStyle(m[1]);
-          blocks.push(make('callout', { style, title: m[2] || CALLOUTS[style].label, body: run(quoted.slice(1)) }));
+          push(make('callout', { style, title: m[2] || CALLOUTS[style].label, body: run(quoted.slice(1)) }), i0, i);
         } else {
-          blocks.push(make('quote', { text: quoted.map(q => q[1]).join('\n') }));
+          push(make('quote', { text: quoted.map(q => q[1]).join('\n') }), i0, i);
         }
         continue;
       }
@@ -102,6 +108,7 @@ export function parse(text) {
         const question = [line.slice(2).trim()];
         const answer = [];
         let inAnswer = false;
+        let last = i;
         i++;
         while (i < lines.length) {
           const l = lines[i][1].trim();
@@ -109,9 +116,11 @@ export function parse(text) {
           if (/^[Aa]:/.test(l) && !inAnswer) { inAnswer = true; answer.push(l.slice(2).trim()); }
           else if (/^[Qq]:/.test(l)) break;
           else (inAnswer ? answer : question).push(l);
+          last = i;
           i++;
         }
-        blocks.push(make('flashcard', { question: question.join(' '), answer: answer.join('\n') }));
+        push(make('flashcard', { question: question.join(' '), answer: answer.join('\n') }), i0, last + 1);
+        i = last + 1;
         continue;
       }
 
@@ -121,8 +130,8 @@ export function parse(text) {
         while (j < lines.length && quizOption(lines[j][1])) options.push(quizOption(lines[j++][1]));
         if (options.length) {
           flush();
-          blocks.push(make('quiz', { question: line.replace(/^\?+\s*/, ''), options }));
           i = j;
+          push(make('quiz', { question: line.replace(/^\?+\s*/, ''), options }), i0, i);
           continue;
         }
       }
@@ -133,7 +142,7 @@ export function parse(text) {
         const rows = [];
         i += 2;
         while (i < lines.length && lines[i][1].trim().startsWith('|')) rows.push(cells(lines[i++][1]));
-        blocks.push(make('table', { header, rows }));
+        push(make('table', { header, rows }), i0, i);
         continue;
       }
 
@@ -146,21 +155,23 @@ export function parse(text) {
           items.push({ ...marker, line: lines[i][0] });
           i++;
         }
-        blocks.push(make('list', { items, ordered: first.ordered }));
+        push(make('list', { items, ordered: first.ordered }), i0, i);
         continue;
       }
 
       const img = /^!\[(.*?)\]\((.+)\)$/.exec(line);
-      if (img) { flush(); blocks.push(make('image', { alt: img[1], src: img[2] })); i++; continue; }
+      if (img) { flush(); i++; push(make('image', { alt: img[1], src: img[2] }), i0, i); continue; }
 
       const def = line.indexOf(' :: ');
       if (def > 0) {
         flush();
-        blocks.push(make('definition', { term: line.slice(0, def).trim(), meaning: line.slice(def + 4).trim() }));
         i++;
+        push(make('definition', { term: line.slice(0, def).trim(), meaning: line.slice(def + 4).trim() }), i0, i);
         continue;
       }
 
+      if (!para.length) paraStart = lineNo;
+      paraEnd = lineNo;
       para.push(line);
       i++;
     }

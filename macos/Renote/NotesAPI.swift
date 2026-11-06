@@ -80,6 +80,7 @@ final class NotesAPI {
     let root: URL
     private let fm = FileManager.default
     private var log: URL { root.appendingPathComponent(".renote/log.json") }
+    private var settings: URL { root.appendingPathComponent(".renote/settings.json") }
     private let noteExtensions: Set<String> = ["md", "markdown", "txt"]
 
     private init() {
@@ -170,6 +171,16 @@ final class NotesAPI {
             try? fm.createDirectory(at: log.deletingLastPathComponent(), withIntermediateDirectories: true)
             if let data = try? JSONSerialization.data(withJSONObject: entries, options: [.prettyPrinted]) { try? data.write(to: log) }
             return .json(["ok": true, "count": entries.count], status: 201)
+
+        case ("GET", "/api/settings"):
+            let data = (try? Data(contentsOf: settings)) ?? Data("{}".utf8)
+            return Response(status: 200, type: "application/json", data: data)
+
+        case ("PUT", "/api/settings"):
+            // Fonts, size, width and accent chosen in the Aa panel.
+            try? fm.createDirectory(at: settings.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? body.write(to: settings)
+            return Response(status: 200, type: "application/json", data: body)
 
         case ("GET", "/api/file"):
             guard let file = safe(param("path")), let data = try? Data(contentsOf: file) else { return .error("Not found", status: 404) }

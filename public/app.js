@@ -223,98 +223,596 @@ function renderHome(main, subject) {
 async function newNote(subject = null) {
   const note = await api.send('POST', '/api/note', { subject });
   await loadIndex();
-  location.hash = noteHref(note.path, 'write');
+  location.hash = noteHref(note.path, 'edit');
 }
 
-// ---------- Note view ----------
-function splitSections(blocks) {
-  const out = { title: null, lede: null, intro: [], sections: [] };
-  let i = 0;
-  if (blocks[0]?.type === 'heading' && blocks[0].level === 1) { out.title = blocks[0].text; i = 1; }
-  if (blocks[i]?.type === 'paragraph' && !blocks[i].text.includes('{{')) { out.lede = blocks[i].text; i++; }
-  let cur = null;
-  for (; i < blocks.length; i++) {
-    const b = blocks[i];
-    if (b.type === 'heading' && b.level <= 2) { cur = { heading: b, blocks: [] }; out.sections.push(cur); }
-    else (cur ? cur.blocks : out.intro).push(b);
-  }
-  return out;
-}
+// ---------- Note view: one page you can read or edit in place ----------
+// Modes (in the URL): '' = page in view mode, 'edit' = same page editable,
+// 'revise' = card deck, 'source' (or old 'write') = raw Markdown.
+const EDIT_KEY = 'renote-editing';
 
 function renderNote(main, mode) {
   const note = current();
   if (!note) { location.hash = '#/'; return; }
+  if (mode === 'write') mode = 'source';
   const blocks = parse(state.text);
   const cards = studyCards(blocks);
   const words = state.text.split(/\s+/).filter(Boolean).length;
-  const { title, lede, intro, sections } = splitSections(blocks);
-  const modeChip = (m, ic, label) => `<a class="chip ${mode === m ? 'on' : ''}" href="${noteHref(note.path, m)}">${icon(ic, 14)}${label}</a>`;
-  const hero = `
-    <section class="hero ${mode === 'read' ? '' : 'compact'}">
-      <div class="eyebrow">
-        ${note.subject ? `<a href="#/subject/${encodeURIComponent(note.subject)}" style="color:inherit">${esc(note.subject)}</a><span class="dot"></span>` : ''}
-        <span>${Math.max(1, Math.round(words / 200))} min read</span><span class="dot"></span>
-        <span>Edited ${timeAgo(note.modified)}</span>
-        ${cards.length ? `<span class="dot"></span><a href="${noteHref(note.path, 'revise')}">${cards.length} to revise</a>` : ''}
-      </div>
-      <h1 class="reveal">${renderInline(title || note.title)}</h1>
-      ${lede && mode === 'read' ? `<p class="lede">${renderInline(lede)}</p>` : ''}
-      <div class="bar">
-        <div class="chips">${modeChip('read', 'book', 'Read')}${modeChip('write', 'pen', 'Write')}${modeChip('revise', 'cards', `Revise${cards.length ? ' · ' + cards.length : ''}`)}</div>
-        <div class="right">
-          <button class="icon-btn" id="rename" title="Rename">${icon('edit')}</button>
-          <button class="icon-btn" id="trash" title="Move to trash">${icon('trash')}</button>
-        </div>
-      </div>
-    </section>`;
+  const editing = mode === 'edit';
+  const head = `
+    <div class="page-meta">
+      ${note.subject ? `<a href="#/subject/${encodeURIComponent(note.subject)}">${esc(note.subject)}</a><span class="dot"></span>` : ''}
+      <span>${Math.max(1, Math.round(words / 200))} min read</span><span class="dot"></span>
+      <span>Edited ${timeAgo(note.modified)}</span>
+      ${cards.length ? `<span class="dot"></span><a class="accent" href="${noteHref(note.path, 'revise')}">${cards.length} to revise</a>` : ''}
+    </div>`;
 
-  if (mode === 'write') main.innerHTML = hero + writeView();
-  else if (mode === 'revise') main.innerHTML = hero + `<section class="revise" id="revise"></section>`;
-  else main.innerHTML = hero + readView(intro, sections) + composerView();
+  if (mode === 'revise') {
+    main.innerHTML = `<article class="page-wrap">${head}<h1 class="page-title-small">${esc(note.title)}</h1></article><section class="revise" id="revise"></section>`;
+  } else if (mode === 'source') {
+    main.innerHTML = `<article class="page-wrap">${head}</article>` + writeView();
+  } else {
+    main.innerHTML = `<article class="page-wrap ${editing ? 'editing' : ''}">${head}<div class="page" id="page">${pageHtml(blocks, editing)}</div>
+      ${editing ? `<button class="blk-new" id="blk-new">${icon('plus', 14)} Click to add a block, or type <kbd>/</kbd> in an empty one for components</button>` : ''}
+    </article>`;
+  }
+  main.insertAdjacentHTML('beforeend', dockHtml(note, mode, cards.length));
+  wireDock(note, mode);
 
-  $('#rename').onclick = async () => {
-    const name = prompt('Rename note', note.path.split('/').pop().replace(/\.\w+$/, ''));
-    if (!name) return;
-    await saveNow();
-    try {
-      const { path } = await api.send('POST', '/api/note/rename', { path: note.path, name });
-      await loadIndex();
-      state.path = path;
-      location.hash = noteHref(path, mode);
-    } catch (e) { toast(e.message); }
-  };
-  $('#trash').onclick = async () => {
-    if (!confirm(`Move “${note.title}” to the trash? It is kept in .renote/trash inside your notes folder.`)) return;
-    await saveNow();
-    await api.send('POST', '/api/note/trash', { path: note.path });
-    state.path = null;
-    await loadIndex();
-    location.hash = '#/';
-    toast('Moved to trash');
-  };
-
-  if (mode === 'write') wireWrite();
+  if (mode === 'source') wireWrite();
   else if (mode === 'revise') startRevise($('#revise'), cards, note);
-  else { wireBlocks(main); wireComposer(); }
+  else if (editing) wireEditor();
+  else wireBlocks(main);
 }
 
-function readView(intro, sections) {
-  const introHtml = intro.length ? `<section class="intro"><div class="flow">${blocksHtml(intro)}</div></section>` : '';
-  let n = 0;
-  const secs = sections.map(s => {
-    n++;
-    const sc = studyCards(s.blocks).length;
-    return `<section class="section">
-      <div class="label"><div class="sticky reveal">
-        <div class="num">${String(n).padStart(2, '0')}</div>
-        <h2>${renderInline(s.heading.text)}</h2>
-        ${sc ? `<div class="sub">${sc} ${sc === 1 ? 'card' : 'cards'} to revise</div>` : ''}
-      </div></div>
-      <div class="content"><div class="flow">${blocksHtml(s.blocks) || '<p style="color:var(--faint)">Nothing here yet.</p>'}</div></div>
-    </section>`;
-  }).join('');
-  return introHtml + secs;
+/** The whole note as one page. Headings, lede and sections all come from the Markdown. */
+function pageHtml(blocks, editing) {
+  const out = [];
+  let section = 0;
+  for (let i = 0; i < blocks.length; i++) {
+    const b = blocks[i];
+    let group = [b];
+    if (b.type === 'definition') while (blocks[i + 1]?.type === 'definition') group.push(blocks[++i]);
+    let html;
+    if (b.type === 'heading' && b.level === 1) html = `<h1 class="page-title reveal">${renderInline(b.text)}</h1>`;
+    else if (b.type === 'heading' && b.level === 2) {
+      section++;
+      html = `<h2 class="page-h2 reveal"><span class="num">${String(section).padStart(2, '0')}</span>${renderInline(b.text)}</h2>`;
+    } else if (b.type === 'paragraph' && i === 1 && blocks[0]?.type === 'heading' && blocks[0].level === 1 && !b.text.includes('{{')) {
+      html = `<p class="lede">${renderInline(b.text)}</p>`;
+    } else html = blocksHtml(group);
+    const s = group[0].start, e = group.at(-1).end;
+    out.push(editing ? `<div class="blk" data-s="${s}" data-e="${e}">${html}</div>` : html);
+  }
+  if (!blocks.length) out.push(editing ? '' : `<p class="empty-page">This page is empty. Press <kbd>⌘E</kbd> or the Edit switch to start writing.</p>`);
+  return out.join('');
 }
+
+// ---------- Corner dock: View / Edit, type settings, revise, more ----------
+function dockHtml(note, mode, cardCount) {
+  const editing = mode === 'edit';
+  return `<div class="dock" id="dock">
+    <div class="dock-seg" role="tablist" aria-label="View or edit">
+      <a href="${noteHref(note.path)}" class="${mode === 'read' ? 'on' : ''}" title="View (⌘E)">${icon('book', 14)}View</a>
+      <a href="${noteHref(note.path, 'edit')}" class="${editing ? 'on' : ''}" title="Edit (⌘E)">${icon('pen', 14)}Edit</a>
+    </div>
+    <span class="dock-sep"></span>
+    <button class="dock-btn" id="type-btn" title="Fonts and layout">Aa</button>
+    <a class="dock-btn ${mode === 'revise' ? 'on' : ''}" href="${noteHref(note.path, 'revise')}" title="Revise this note">${icon('cards', 15)}${cardCount ? `<span class="badge">${cardCount}</span>` : ''}</a>
+    <div class="menu" id="more-menu"><button class="dock-btn" id="more-btn" title="More">${icon('lines', 15)}</button>
+      <div class="list-menu up">
+        <button data-act="focus">${icon('grid')} ${document.body.classList.contains('focus') ? 'Show sidebar' : 'Hide sidebar'} <kbd>⌘\\</kbd></button>
+        <button data-act="source">${icon('code')} ${mode === 'source' ? 'Back to page' : 'Edit as Markdown'}</button>
+        <button data-act="rename">${icon('edit')} Rename</button>
+        <button data-act="trash">${icon('trash')} Move to trash</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function wireDock(note, mode) {
+  $('#type-btn').onclick = e => { e.stopPropagation(); toggleTypePanel(); };
+  const menu = $('#more-menu');
+  $('#more-btn').onclick = e => { e.stopPropagation(); menu.classList.toggle('open'); };
+  menu.querySelectorAll('[data-act]').forEach(b => b.onclick = async () => {
+    menu.classList.remove('open');
+    const act = b.dataset.act;
+    if (act === 'focus') toggleFocus();
+    else if (act === 'source') location.hash = noteHref(note.path, mode === 'source' ? 'read' : 'source');
+    else if (act === 'rename') {
+      const name = prompt('Rename note', note.path.split('/').pop().replace(/\.\w+$/, ''));
+      if (!name) return;
+      await saveNow();
+      try {
+        const { path } = await api.send('POST', '/api/note/rename', { path: note.path, name });
+        await loadIndex();
+        state.path = path;
+        location.hash = noteHref(path, mode);
+      } catch (err) { toast(err.message); }
+    } else if (act === 'trash') {
+      if (!confirm(`Move “${note.title}” to the trash? It is kept in .renote/trash inside your notes folder.`)) return;
+      await saveNow();
+      await api.send('POST', '/api/note/trash', { path: note.path });
+      state.path = null;
+      await loadIndex();
+      location.hash = '#/';
+      toast('Moved to trash');
+    }
+  });
+}
+
+function toggleFocus() {
+  document.body.classList.toggle('focus');
+  try { localStorage.setItem('renote-focus', document.body.classList.contains('focus') ? '1' : ''); } catch {}
+}
+
+function toggleEdit() {
+  const r = parseHash();
+  if (r.view !== 'note') return;
+  location.hash = noteHref(r.path, r.mode === 'edit' ? 'read' : 'edit');
+}
+
+// ---------- In-place editor ----------
+// Each block on the page maps to a range of source lines. Clicking a block swaps it
+// for a borderless text area set in the same type, holding that block's Markdown.
+// Typing writes straight back into the note; leaving the block re-renders it.
+let active = null; // { blk, ta, s, e, prefix }
+
+const SLASH = [
+  { key: 'text', label: 'Text', icon: 'lines', text: '' },
+  { key: 'h1', label: 'Title', icon: 'lines', prefix: '# ', text: '' },
+  { key: 'h2', label: 'Section heading', icon: 'lines', prefix: '## ', text: '' },
+  { key: 'h3', label: 'Sub-heading', icon: 'lines', prefix: '### ', text: '' },
+  { key: 'flashcard', label: 'Flashcard', icon: 'cards', text: 'Q: |\nA: ' },
+  { key: 'definition', label: 'Definition', icon: 'dict', text: '| :: ' },
+  { key: 'quiz', label: 'Quiz', icon: 'quiz', text: '? |\n- ( ) Wrong answer\n- (x) Right answer\n- ( ) Wrong answer' },
+  { key: 'gap', label: 'Gap fill', icon: 'eye', text: 'The answer is {{|}}.' },
+  { key: 'todo', label: 'Checklist', icon: 'todo', text: '- [ ] |' },
+  { key: 'bullets', label: 'Bulleted list', icon: 'list', text: '- |' },
+  { key: 'numbers', label: 'Numbered list', icon: 'list', text: '1. |' },
+  ...Object.entries(CALLOUTS).map(([k, c]) => ({ key: 'callout ' + k, label: 'Callout: ' + c.label, icon: c.icon, text: `> [!${k}] ${c.label}\n> |` })),
+  { key: 'toggle', label: 'Toggle', icon: 'toggle', text: '+++ |\nHidden details\n+++' },
+  { key: 'quote', label: 'Quote', icon: 'bubble', text: '> |' },
+  { key: 'table', label: 'Table', icon: 'table', text: '| | Column |\n|---|---|\n| Cell | Cell |' },
+  { key: 'code', label: 'Code block', icon: 'code', text: '```\n|\n```' },
+  { key: 'divider', label: 'Divider', icon: 'lines', text: '---' },
+  { key: 'image', label: 'Image', icon: 'file', text: '![|](image.png)' },
+];
+
+const srcLines = () => state.text.split('\n');
+
+function blockKind(value, prefix) {
+  const first = (prefix + value).split('\n')[0];
+  const h = /^(#{1,6}) /.exec(first);
+  if (h) return 'h' + Math.min(h[1].length, 3);
+  if (/^(```|\|)/.test(first)) return 'mono';
+  if (/^(\s*[-*+] |\s*\d+[.)] |>|\? |[Qq]:)/.test(first)) return 'struct';
+  return 'p';
+}
+
+function wireEditor() {
+  const page = $('#page');
+  page.addEventListener('mousedown', e => {
+    const blk = e.target.closest('.blk');
+    if (!blk || blk.classList.contains('active')) return;
+    e.preventDefault();
+    beginEdit(blk, 'click', e);
+  });
+  $('#blk-new').onclick = () => { if (active) commit(false); addBlockAfter(lastLine(), ''); };
+  if (!page.querySelector('.blk')) addBlockAfter(lastLine(), '');
+  const pending = sessionStorage.getItem(EDIT_KEY);
+  if (pending) {
+    sessionStorage.removeItem(EDIT_KEY);
+    const { s, caret } = JSON.parse(pending);
+    const blk = [...page.querySelectorAll('.blk')].find(b => +b.dataset.s === s);
+    if (blk) beginEdit(blk, caret);
+  }
+}
+
+const lastLine = () => { const L = srcLines(); let n = L.length - 1; while (n > 0 && !L[n].trim()) n--; return L[n]?.trim() ? n : -1; };
+
+function beginEdit(blk, caret = 'end', evt) {
+  if (active) commit(false);
+  const s = +blk.dataset.s, e = +blk.dataset.e;
+  const src = srcLines().slice(s, e + 1).join('\n');
+  // Headings hide their #s, so editing a heading looks like editing the heading.
+  const h = !src.includes('\n') && /^(#{1,6} )(.*)$/.exec(src);
+  const prefix = h ? h[1] : '';
+  const value = h ? h[2] : src;
+  const ta = document.createElement('textarea');
+  ta.className = 'src k-' + blockKind(value, prefix);
+  ta.value = value;
+  ta.spellcheck = true;
+  ta.rows = 1;
+  ta.placeholder = prefix ? 'Heading' : "Write something, or type / for components";
+  blk.classList.add('active');
+  blk.replaceChildren(ta, formatBar());
+  active = { blk, ta, s, e, prefix };
+  autosize(ta);
+  ta.focus({ preventScroll: true });
+  let pos = ta.value.length;
+  if (caret === 'start') pos = 0;
+  else if (typeof caret === 'number') pos = Math.min(caret, ta.value.length);
+  ta.setSelectionRange(pos, pos);
+  ta.addEventListener('input', onInput);
+  ta.addEventListener('keydown', onKey);
+  ta.addEventListener('blur', () => setTimeout(() => { if (active?.ta === ta && !document.activeElement?.closest('.fmt, .slash')) commit(true); }, 120));
+}
+
+function autosize(ta) { ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px'; }
+
+/** Writes the active text area back into the note's source. */
+function apply() {
+  const { ta, s, e, prefix } = active;
+  const value = prefix && !/^#{1,6} /.test(ta.value) ? prefix + ta.value : ta.value;
+  const L = srcLines();
+  const next = value.split('\n');
+  L.splice(s, e - s + 1, ...next);
+  const delta = next.length - (e - s + 1);
+  if (delta) {
+    document.querySelectorAll('.blk').forEach(b => {
+      if (b !== active.blk && +b.dataset.s > e) { b.dataset.s = +b.dataset.s + delta; b.dataset.e = +b.dataset.e + delta; }
+    });
+    active.e = e + delta;
+    active.blk.dataset.e = active.e;
+  }
+  setText(L.join('\n'), { render: false });
+}
+
+function onInput() {
+  const { ta } = active;
+  ta.className = 'src k-' + blockKind(ta.value, active.prefix);
+  autosize(ta);
+  apply();
+  slashMenu();
+}
+
+/** Leaves the active block; empty blocks disappear. Re-renders the page when asked. */
+function commit(rerender) {
+  if (!active) return;
+  const { ta, s, e } = active;
+  closeSlash();
+  if (!ta.value.trim()) {
+    const L = srcLines();
+    // Drop the block's lines and one surrounding blank line.
+    let from = s, count = e - s + 1;
+    if (from > 0 && !L[from - 1].trim()) { from--; count++; }
+    L.splice(from, count);
+    setText(L.join('\n'), { render: false });
+  }
+  active = null;
+  if (rerender) rerenderPage();
+}
+
+function rerenderPage(focus) {
+  const page = $('#page');
+  if (!page) return;
+  const y = scrollY;
+  if (focus) sessionStorage.setItem(EDIT_KEY, JSON.stringify(focus));
+  page.innerHTML = pageHtml(parse(state.text), true);
+  scrollTo(0, y);
+  const pending = sessionStorage.getItem(EDIT_KEY);
+  if (pending) {
+    sessionStorage.removeItem(EDIT_KEY);
+    const { s, caret } = JSON.parse(pending);
+    const blk = [...page.querySelectorAll('.blk')].find(b => +b.dataset.s === s);
+    if (blk) beginEdit(blk, caret);
+  }
+  observeReveals();
+}
+
+/** Inserts a new empty block after source line `after` and starts editing it. */
+function addBlockAfter(after, text, caret) {
+  const L = srcLines();
+  const at = after + 1;
+  const insert = after < 0 ? [text, ''] : ['', text, ''];
+  L.splice(at, 0, ...insert);
+  setText(L.join('\n'), { render: false });
+  const lineOfNew = after < 0 ? 0 : at + 1;
+  if (active) active = null;
+  // Put a placeholder block in place and edit it right away.
+  const page = $('#page');
+  page.innerHTML = pageHtml(parse(state.text), true);
+  let blk = [...page.querySelectorAll('.blk')].find(b => +b.dataset.s === lineOfNew);
+  if (!blk) {
+    blk = document.createElement('div');
+    blk.className = 'blk';
+    blk.dataset.s = blk.dataset.e = lineOfNew;
+    const before = [...page.querySelectorAll('.blk')].find(b => +b.dataset.s > lineOfNew);
+    page.insertBefore(blk, before || null);
+  }
+  beginEdit(blk, caret ?? 'end');
+}
+
+function neighbour(dir) {
+  const all = [...document.querySelectorAll('#page .blk')];
+  return all[all.indexOf(active.blk) + dir];
+}
+
+function onKey(e) {
+  const { ta } = active;
+  const mod = e.metaKey || e.ctrlKey;
+  if (slashOpen() && ['ArrowDown', 'ArrowUp', 'Enter', 'Escape', 'Tab'].includes(e.key)) { slashKey(e); return; }
+  if (mod && !e.shiftKey && e.key.toLowerCase() === 'b') { e.preventDefault(); wrapSel('**'); return; }
+  if (mod && !e.shiftKey && e.key.toLowerCase() === 'i') { e.preventDefault(); wrapSel('*'); return; }
+  if (mod && !e.shiftKey && e.key.toLowerCase() === 'u') { e.preventDefault(); wrapSel('++'); return; }
+  if (mod && e.shiftKey && e.key.toLowerCase() === 'h') { e.preventDefault(); wrapSel('=='); return; }
+  if (mod && e.shiftKey && e.key.toLowerCase() === 'g') { e.preventDefault(); wrapSel('{{', '}}'); return; }
+  if (e.key === 'Escape') { e.preventDefault(); ta.blur(); return; }
+
+  const { selectionStart: a, selectionEnd: b, value } = ta;
+  const lineStart = value.lastIndexOf('\n', a - 1) + 1;
+  const lineEndIdx = value.indexOf('\n', a);
+  const line = value.slice(lineStart, lineEndIdx < 0 ? value.length : lineEndIdx);
+
+  if (e.key === 'Enter' && !e.shiftKey && !mod) {
+    const inFence = /^```/.test(value) || /^\+\+\+/.test(value);
+    if (inFence) return; // newlines are normal inside code and toggles
+    // Lists, checklists, quotes and callouts carry on with their marker.
+    const m = /^(\s*)([-*+] \[[ xX]\] |[-*+] \([ xX]\) |[-*+] |(\d+)[.)] |> ?)/.exec(line);
+    if (m) {
+      e.preventDefault();
+      if (line.trim() === m[2].trim()) {
+        // Enter on an empty item ends the list and starts a new block.
+        const before = value.slice(0, lineStart).replace(/\n$/, '');
+        ta.value = before;
+        apply();
+        const after = active.e;
+        if (!before.trim()) { commit(false); }
+        addBlockAfter(after, '');
+        return;
+      }
+      let marker = m[2].replace(/\[[xX]\]/, '[ ]').replace(/\([xX]\)/, '( )');
+      if (m[3]) marker = `${Number(m[3]) + 1}. `;
+      ta.setRangeText('\n' + m[1] + marker, a, b, 'end');
+      onInput();
+      return;
+    }
+    if (/^(\? |[Qq]:|\|)/.test(value)) return; // quizzes, flashcards, tables: plain newline
+    // Paragraphs and headings split into a new block at the caret.
+    e.preventDefault();
+    const rest = value.slice(b);
+    ta.value = value.slice(0, a);
+    apply();
+    const after = active.e;
+    const keep = ta.value.trim();
+    commit(false);
+    addBlockAfter(keep ? after : after - 0, rest, 'start');
+    return;
+  }
+
+  if (e.key === 'Backspace' && a === 0 && b === 0) {
+    if (active.prefix) {
+      // Backspace at the start of a heading turns it back into text.
+      e.preventDefault();
+      active.prefix = '';
+      apply();
+      ta.className = 'src k-' + blockKind(ta.value, '');
+      return;
+    }
+    const prev = neighbour(-1);
+    if (!prev) return;
+    e.preventDefault();
+    const prevSrc = srcLines().slice(+prev.dataset.s, +prev.dataset.e + 1).join('\n');
+    const plainPrev = !prevSrc.includes('\n') && !/^(```|\||>|\? |[Qq]:|[-*+] |\d+[.)] |---)/.test(prevSrc);
+    const plainCur = !value.includes('\n');
+    if (!value.trim()) {
+      ta.value = '';
+      commit(false);
+      rerenderPage({ s: +prev.dataset.s, caret: 'end' });
+    } else if (plainPrev && plainCur) {
+      // Merge this block into the one above.
+      const ps = +prev.dataset.s, joinAt = prevSrc.replace(/^#{1,6} /, '').length;
+      const L = srcLines();
+      L.splice(active.s, active.e - active.s + 1);
+      if (!L[active.s - 1]?.trim()) L.splice(active.s - 1, 1);
+      L[ps] = L[ps] + value;
+      active = null;
+      setText(L.join('\n'), { render: false });
+      rerenderPage({ s: ps, caret: joinAt });
+    }
+    return;
+  }
+
+  if (e.key === 'ArrowUp' && !value.slice(0, a).includes('\n')) {
+    const prev = neighbour(-1);
+    if (prev) { e.preventDefault(); const s = +prev.dataset.s; commit(false); rerenderPage({ s, caret: 'end' }); }
+  } else if (e.key === 'ArrowDown' && !value.slice(b).includes('\n')) {
+    const next = neighbour(1);
+    if (next) {
+      e.preventDefault();
+      // Lines above may vanish if this block was empty, so remember by order.
+      const order = [...document.querySelectorAll('#page .blk')].indexOf(next);
+      const wasEmpty = !value.trim();
+      commit(false);
+      const blocks = parse(state.text);
+      rerenderPage();
+      const all = [...document.querySelectorAll('#page .blk')];
+      const target = all[wasEmpty ? order - 1 : order];
+      if (target) beginEdit(target, 'start');
+      void blocks;
+    }
+  }
+}
+
+function wrapSel(open, close = open) {
+  const { ta } = active;
+  const { selectionStart: a, selectionEnd: b } = ta;
+  const sel = ta.value.slice(a, b);
+  ta.setRangeText(open + sel + close, a, b, 'select');
+  ta.setSelectionRange(a + open.length, a + open.length + sel.length);
+  onInput();
+}
+
+/** Little formatting bar that sits on the corner of the block being edited. */
+function formatBar() {
+  const bar = document.createElement('div');
+  bar.className = 'fmt';
+  bar.innerHTML = `
+    <button data-w="**" title="Bold (⌘B)"><b>B</b></button>
+    <button data-w="*" title="Italic (⌘I)"><i>I</i></button>
+    <button data-w="++" title="Underline (⌘U)"><u>U</u></button>
+    <button data-w="~~" title="Strikethrough"><s>S</s></button>
+    <button data-w="==" title="Highlight (⌘⇧H)">${icon('mark', 13)}</button>
+    <button data-w="{{|}}" title="Hide as a gap (⌘⇧G)">${icon('eye', 13)}</button>
+    <button data-w="\`" title="Code">${icon('code', 13)}</button>
+    <span class="fmt-sep"></span>
+    ${['red', 'orange', 'yellow', 'green', 'blue', 'purple', 'pink'].map(c => `<button class="sw" data-w="{${c}||}" title="${c[0].toUpperCase() + c.slice(1)} text" style="--sw:var(--c-${c})"></button>`).join('')}`;
+  bar.addEventListener('mousedown', e => {
+    e.preventDefault(); // keep focus and selection in the text area
+    const btn = e.target.closest('[data-w]');
+    if (!btn) return;
+    const w = btn.dataset.w;
+    if (w.startsWith('{') && w.endsWith('||}')) wrapSel(w.slice(0, -2), '}');
+    else if (w === '{{|}}') wrapSel('{{', '}}');
+    else wrapSel(w);
+  });
+  return bar;
+}
+
+// Slash menu: type / at the start of an empty block to insert a component.
+let slash = null; // { el, items, index }
+const slashOpen = () => !!slash;
+function slashMenu() {
+  const { ta } = active;
+  const m = /^\/([\w ]*)$/.exec(ta.value);
+  if (!m || active.prefix) { closeSlash(); return; }
+  const q = m[1].toLowerCase();
+  const items = SLASH.filter(it => it.label.toLowerCase().includes(q) || it.key.includes(q));
+  if (!slash) {
+    slash = { el: document.createElement('div'), items, index: 0 };
+    slash.el.className = 'slash';
+    active.blk.appendChild(slash.el);
+    slash.el.addEventListener('mousedown', e => {
+      e.preventDefault();
+      const b = e.target.closest('[data-i]');
+      if (b) pickSlash(slash.items[+b.dataset.i]);
+    });
+  }
+  slash.items = items;
+  slash.index = Math.min(slash.index, Math.max(0, items.length - 1));
+  slash.el.innerHTML = items.length
+    ? items.map((it, i) => `<button data-i="${i}" class="${i === slash.index ? 'on' : ''}">${icon(it.icon, 14)}${esc(it.label)}</button>`).join('')
+    : '<div class="none">No matching component</div>';
+  slash.el.querySelector('.on')?.scrollIntoView({ block: 'nearest' });
+}
+function closeSlash() { slash?.el.remove(); slash = null; }
+function slashKey(e) {
+  e.preventDefault();
+  if (e.key === 'Escape') { closeSlash(); return; }
+  if (e.key === 'ArrowDown') slash.index = (slash.index + 1) % Math.max(1, slash.items.length);
+  else if (e.key === 'ArrowUp') slash.index = (slash.index - 1 + slash.items.length) % Math.max(1, slash.items.length);
+  else if (slash.items[slash.index]) { pickSlash(slash.items[slash.index]); return; }
+  slashMenu();
+}
+function pickSlash(item) {
+  closeSlash();
+  const { ta } = active;
+  active.prefix = item.prefix || '';
+  const caret = item.text.indexOf('|');
+  ta.value = item.text.replace('|', '');
+  ta.className = 'src k-' + blockKind(ta.value, active.prefix);
+  ta.placeholder = active.prefix ? 'Heading' : ta.placeholder;
+  autosize(ta);
+  const pos = caret < 0 ? ta.value.length : caret;
+  ta.setSelectionRange(pos, pos);
+  apply();
+  if (item.key === 'divider') { commit(false); addBlockAfter(active?.e ?? lastLine(), ''); }
+}
+
+// ---------- Type settings ----------
+const FONTS = [
+  { name: 'Inter', css: "Inter, system-ui, sans-serif", note: 'Clean sans' },
+  { name: 'Geist', css: "Geist, system-ui, sans-serif", note: 'Modern sans' },
+  { name: 'Space Grotesk', css: "'Space Grotesk', system-ui, sans-serif", note: 'Quirky sans' },
+  { name: 'Atkinson Hyperlegible', css: "'Atkinson Hyperlegible', system-ui, sans-serif", note: 'Extra readable' },
+  { name: 'Newsreader', css: "Newsreader, Georgia, serif", note: 'Editorial serif' },
+  { name: 'Literata', css: "Literata, Georgia, serif", note: 'Book serif' },
+  { name: 'Fraunces', css: "Fraunces, Georgia, serif", note: 'Soft display serif' },
+  { name: 'Instrument Serif', css: "'Instrument Serif', Georgia, serif", note: 'Elegant headlines' },
+  { name: 'JetBrains Mono', css: "'JetBrains Mono', ui-monospace, monospace", note: 'Monospace' },
+  { name: 'IBM Plex Mono', css: "'IBM Plex Mono', ui-monospace, monospace", note: 'Typewriter' },
+  { name: 'Caveat', css: "Caveat, cursive", note: 'Handwritten' },
+];
+const ACCENTS = { orange: '#f97316', amber: '#f59e0b', lime: '#84cc16', green: '#22c55e', teal: '#14b8a6', blue: '#3b82f6', violet: '#8b5cf6', pink: '#ec4899', red: '#ef4444', white: '#e5e5e5' };
+const DEFAULT_TYPE = { head: 'Inter', body: 'Inter', size: 17, width: 720, leading: 1.7, accent: 'orange' };
+let typeSettings = { ...DEFAULT_TYPE };
+const loadedFonts = new Set(['Inter', 'JetBrains Mono']);
+
+function loadFont(name) {
+  if (loadedFonts.has(name)) return;
+  loadedFonts.add(name);
+  const family = name.replace(/ /g, '+');
+  const axes = name === 'Instrument Serif' || name === 'Caveat' ? '' : ':wght@400;500;600;700';
+  const link = document.createElement('link');
+  link.rel = 'stylesheet';
+  link.href = `https://fonts.googleapis.com/css2?family=${family}${name === 'Instrument Serif' ? ':ital@0;1' : axes}&display=swap`;
+  document.head.appendChild(link);
+}
+
+function applyType() {
+  const t = typeSettings;
+  const font = n => (FONTS.find(f => f.name === n) || FONTS[0]).css;
+  loadFont(t.head); loadFont(t.body);
+  const root = document.documentElement.style;
+  root.setProperty('--font-head', font(t.head));
+  root.setProperty('--font-body', font(t.body));
+  root.setProperty('--fs', t.size + 'px');
+  root.setProperty('--measure', t.width + 'px');
+  root.setProperty('--leading', t.leading);
+  root.setProperty('--accent', ACCENTS[t.accent] || ACCENTS.orange);
+}
+
+let typeSaveTimer;
+function saveType() {
+  applyType();
+  clearTimeout(typeSaveTimer);
+  typeSaveTimer = setTimeout(() => api.send('PUT', '/api/settings', { type: typeSettings }).catch(() => {}), 400);
+}
+
+function toggleTypePanel() {
+  const open = $('#type-panel');
+  if (open) { open.remove(); return; }
+  FONTS.forEach(f => loadFont(f.name));
+  const panel = document.createElement('div');
+  panel.id = 'type-panel';
+  panel.className = 'type-panel';
+  const fontList = which => FONTS.map(f => `<button class="font-opt ${typeSettings[which] === f.name ? 'on' : ''}" data-font="${which}|${esc(f.name)}" style="font-family:${esc(f.css)}">
+      <span class="fn">${esc(f.name)}</span><span class="fd">${esc(f.note)}</span></button>`).join('');
+  panel.innerHTML = `
+    <div class="tp-head"><span>Type</span><button class="link" id="tp-reset">Reset</button></div>
+    <div class="tp-tabs"><button class="on" data-tab="head">Headings</button><button data-tab="body">Body</button></div>
+    <div class="font-list" data-list="head">${fontList('head')}</div>
+    <div class="font-list" data-list="body" hidden>${fontList('body')}</div>
+    <label class="tp-row"><span>Size</span><input type="range" min="14" max="22" step="1" id="tp-size" value="${typeSettings.size}"><b id="tp-size-v">${typeSettings.size}px</b></label>
+    <label class="tp-row"><span>Width</span><input type="range" min="560" max="960" step="20" id="tp-width" value="${typeSettings.width}"><b id="tp-width-v">${typeSettings.width}</b></label>
+    <label class="tp-row"><span>Spacing</span><input type="range" min="1.4" max="2.1" step="0.05" id="tp-lead" value="${typeSettings.leading}"><b id="tp-lead-v">${typeSettings.leading}</b></label>
+    <div class="tp-row"><span>Accent</span><div class="accents">${Object.entries(ACCENTS).map(([k, v]) => `<button class="acc ${typeSettings.accent === k ? 'on' : ''}" data-acc="${k}" title="${k}" style="background:${v}"></button>`).join('')}</div></div>`;
+  document.body.appendChild(panel);
+  panel.addEventListener('click', e => e.stopPropagation());
+  panel.addEventListener('mousedown', e => e.stopPropagation());
+  panel.querySelectorAll('[data-tab]').forEach(t => t.onclick = () => {
+    panel.querySelectorAll('[data-tab]').forEach(x => x.classList.toggle('on', x === t));
+    panel.querySelectorAll('[data-list]').forEach(l => l.hidden = l.dataset.list !== t.dataset.tab);
+  });
+  panel.querySelectorAll('[data-font]').forEach(b => b.onclick = () => {
+    const [which, name] = b.dataset.font.split('|');
+    typeSettings[which] = name;
+    panel.querySelectorAll(`[data-font^="${which}|"]`).forEach(x => x.classList.toggle('on', x === b));
+    saveType();
+  });
+  const slider = (id, key, fmt) => { const el = panel.querySelector(id); el.oninput = () => { typeSettings[key] = Number(el.value); panel.querySelector(id + '-v').textContent = fmt(el.value); saveType(); }; };
+  slider('#tp-size', 'size', v => v + 'px');
+  slider('#tp-width', 'width', v => v);
+  slider('#tp-lead', 'leading', v => v);
+  panel.querySelectorAll('[data-acc]').forEach(b => b.onclick = () => {
+    typeSettings.accent = b.dataset.acc;
+    panel.querySelectorAll('[data-acc]').forEach(x => x.classList.toggle('on', x === b));
+    saveType();
+  });
+  panel.querySelector('#tp-reset').onclick = () => { typeSettings = { ...DEFAULT_TYPE }; saveType(); panel.remove(); toggleTypePanel(); };
+}
+document.addEventListener('mousedown', e => { if (!e.target.closest('#type-panel, #type-btn')) $('#type-panel')?.remove(); });
 
 function blocksHtml(blocks) {
   const out = [];
@@ -421,89 +919,13 @@ function toggleChecklist(line) {
   scrollTo(0, y);
 }
 
-// ---------- Composer ----------
-const KINDS = {
-  text: { label: 'Text', icon: 'lines', a: 'Add to this note… (Markdown works)' },
-  flashcard: { label: 'Flashcard', icon: 'cards', a: 'Question', b: 'Answer' },
-  definition: { label: 'Definition', icon: 'dict', a: 'Term', b: 'What it means' },
-  todo: { label: 'To-do', icon: 'todo', a: 'Something to do' },
-  gap: { label: 'Gap fill', icon: 'eye', a: 'Sentence with the {{hidden part}} in double braces' },
-  heading: { label: 'Section', icon: 'lines', a: 'Section heading' },
-};
-let composerKind = 'text';
-
-function composerView() {
-  const k = KINDS[composerKind];
-  return `<section class="composer"><div class="box">
-    <textarea id="c-a" rows="1" placeholder="${esc(k.a)}"></textarea>
-    ${k.b ? `<div class="second"><textarea id="c-b" rows="1" placeholder="${esc(k.b)}"></textarea></div>` : ''}
-    <div class="row">
-      <div class="menu" id="c-menu"><button class="icon-btn" id="c-plus" title="Insert a component">${icon('plus')}</button>
-        <div class="list-menu">
-          <button data-tpl="quiz">${icon('quiz')} Quiz</button>
-          <button data-tpl="callout">${icon('bulb')} Callout</button>
-          <button data-tpl="toggle">${icon('toggle')} Toggle</button>
-          <button data-tpl="table">${icon('table')} Table</button>
-          <button data-tpl="code">${icon('code')} Code block</button>
-          <button data-tpl="divider">${icon('lines')} Divider</button>
-        </div></div>
-      <div class="chips">${Object.entries(KINDS).map(([key, v]) => `<button class="chip small ${key === composerKind ? 'on' : ''}" data-kind="${key}">${icon(v.icon, 13)}${v.label}</button>`).join('')}</div>
-      <button class="send" id="c-send" disabled title="Add to note (Enter)">${icon('up', 15)}</button>
-    </div></div>
-    <div class="hint">Enter adds it to the end of this note · Shift+Enter for a new line</div>
-  </section>`;
-}
-
 const TEMPLATES = {
   quiz: '? Question\n- ( ) Wrong answer\n- (x) Right answer\n- ( ) Wrong answer',
   callout: '> [!tip] Remember\n> Write the key point here',
   toggle: '+++ Click to expand\nHidden details\n+++',
   table: '| Column | Column |\n|---|---|\n| Cell | Cell |',
-  code: '```\ncode\n```',
-  divider: '---',
 };
 
-function appendSnippet(snippet) {
-  let base = state.text.replace(/\n+$/, '');
-  setText((base ? base + '\n\n' : '') + snippet + '\n');
-  requestAnimationFrame(() => scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }));
-}
-
-function wireComposer() {
-  const a = $('#c-a'), b = $('#c-b'), send = $('#c-send');
-  const grow = t => { t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; };
-  const valid = () => a.value.trim() && (!b || b.value.trim());
-  const update = () => { send.disabled = !valid(); };
-  const submit = () => {
-    if (!valid()) return;
-    const x = a.value.trim(), y = b?.value.trim();
-    const snippet = { text: x, flashcard: `Q: ${x}\nA: ${y}`, definition: `${x} :: ${y}`, todo: `- [ ] ${x}`, gap: x.includes('{{') ? x : `{{${x}}}`, heading: `## ${x}` }[composerKind];
-    sessionStorage.setItem('renote-focus-composer', '1');
-    appendSnippet(snippet);
-  };
-  [a, b].filter(Boolean).forEach(t => {
-    t.oninput = () => { grow(t); update(); };
-    t.onkeydown = e => {
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        if (t === a && b && !b.value.trim()) b.focus(); else submit();
-      }
-    };
-  });
-  send.onclick = submit;
-  document.querySelectorAll('[data-kind]').forEach(c => c.onclick = () => {
-    composerKind = c.dataset.kind;
-    sessionStorage.setItem('renote-focus-composer', '1');
-    route();
-  });
-  const menu = $('#c-menu');
-  $('#c-plus').onclick = e => { e.stopPropagation(); menu.classList.toggle('open'); };
-  menu.querySelectorAll('[data-tpl]').forEach(btn => btn.onclick = () => { menu.classList.remove('open'); appendSnippet(TEMPLATES[btn.dataset.tpl]); });
-  if (sessionStorage.getItem('renote-focus-composer')) {
-    sessionStorage.removeItem('renote-focus-composer');
-    a.focus({ preventScroll: true });
-  }
-}
 document.addEventListener('click', () => document.querySelectorAll('.menu.open').forEach(m => m.classList.remove('open')));
 
 // ---------- Write view ----------
@@ -591,7 +1013,7 @@ let reviseKeys = null;
 
 function startRevise(root, cards, note) {
   if (!cards.length) {
-    root.innerHTML = `<div class="done"><h2>Nothing to revise yet</h2><p>Add a flashcard (Q: / A:), a definition (Term :: meaning),<br>a quiz, or hide words with {{gaps}} and they'll show up here.</p><a class="btn btn-white" href="${noteHref(note.path, 'write')}">Start writing</a></div>`;
+    root.innerHTML = `<div class="done"><h2>Nothing to revise yet</h2><p>Add a flashcard (Q: / A:), a definition (Term :: meaning),<br>a quiz, or hide words with {{gaps}} and they'll show up here.</p><a class="btn btn-white" href="${noteHref(note.path, 'edit')}">Start writing</a></div>`;
     return;
   }
   const s = { deck: shuffle(cards), i: 0, flipped: false, known: new Set(), again: [], round: 1, logged: false };
@@ -744,6 +1166,9 @@ $('#search').oninput = e => {
   else { renderHome($('#main'), parseHash().subject); observeReveals(); }
 };
 document.addEventListener('keydown', e => {
+  const mod = e.metaKey || e.ctrlKey;
+  if (mod && !e.shiftKey && e.key.toLowerCase() === 'e') { e.preventDefault(); if (active) commit(false); toggleEdit(); return; }
+  if (mod && e.key === '\\') { e.preventDefault(); toggleFocus(); return; }
   if (e.target.closest('input, textarea') || e.metaKey || e.ctrlKey || e.altKey) {
     if ((e.metaKey || e.ctrlKey) && e.key === 's') { e.preventDefault(); saveNow().then(() => toast('Saved')); }
     return;
@@ -751,10 +1176,20 @@ document.addEventListener('keydown', e => {
   const r = parseHash();
   if (e.key === '/') { e.preventDefault(); $('#search').focus(); }
   else if (e.key === 'n') newNote(current()?.subject || null);
-  else if (r.view === 'note' && ['1', '2', '3'].includes(e.key)) location.hash = noteHref(r.path, ['read', 'write', 'revise'][e.key - 1]);
+  else if (r.view === 'note' && ['1', '2', '3'].includes(e.key)) location.hash = noteHref(r.path, ['read', 'edit', 'revise'][e.key - 1]);
 });
 addEventListener('beforeunload', e => { if (state.text !== state.saved) { saveNow(); e.preventDefault(); } });
-addEventListener('hashchange', () => { reviseKeys = null; route(); scrollTo(0, 0); });
+let lastRoute = parseHash();
+addEventListener('hashchange', async () => {
+  reviseKeys = null;
+  const r = parseHash();
+  const sameNote = r.view === 'note' && lastRoute.view === 'note' && r.path === lastRoute.path && ['read', 'edit'].includes(r.mode) && ['read', 'edit'].includes(lastRoute.mode);
+  const y = scrollY;
+  lastRoute = r;
+  if (active) commit(false);
+  await route();
+  scrollTo(0, sameNote ? y : 0);
+});
 addEventListener('resize', specks);
 
 // ---------- Mac app bridge ----------
@@ -785,11 +1220,17 @@ window.renote = {
   newSubject: newSubjectPrompt,
   focusSearch: () => $('#search').focus(),
   go: hash => { location.hash = hash; },
-  setMode: mode => { const r = parseHash(); if (r.view === 'note') location.hash = noteHref(r.path, mode); },
+  setMode: mode => { const r = parseHash(); if (r.view === 'note') location.hash = noteHref(r.path, mode === 'write' ? 'edit' : mode); },
+  toggleEdit: () => { if (active) commit(false); toggleEdit(); },
+  toggleSidebar: toggleFocus,
+  showType: toggleTypePanel,
 };
 addEventListener('resize', reportNoDrag);
 
 specks();
+try { if (localStorage.getItem('renote-focus')) document.body.classList.add('focus'); } catch {}
+applyType();
+api.get('/api/settings').then(s => { if (s?.type) { typeSettings = { ...DEFAULT_TYPE, ...s.type }; applyType(); } }).catch(() => {});
 await loadIndex();
 route();
 reportNoDrag();

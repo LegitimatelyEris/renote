@@ -1,0 +1,10 @@
+{
+  "name": "renote",
+  "version": "0.2.0",
+  "description": "A minimalist local notes site that makes revision more fun.",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": { "node": ">=20" }
+}

@@ -4,7 +4,20 @@ A minimalist notes website that runs on your Mac and makes revision more fun. Th
 
 Notes are plain Markdown files in `~/Documents/Renote`. Sub-folders are **subjects**. Nothing leaves your computer.
 
-## Run it
+## Mac app
+
+`macos/` wraps the site in a native window. The site is bundled inside the app and the app reads and writes your notes itself, so there's no server and no Node needed. The top bar doubles as the title bar, and the menus have New Note (⌘N), Search (⌘F), Read, Write and Revise (⌘1 ⌘2 ⌘3) and Progress (⌘⇧P).
+
+Build it with Xcode and [XcodeGen](https://github.com/yonaskolb/XcodeGen):
+
+```bash
+cd macos
+xcodegen
+xcodebuild -project Renote.xcodeproj -scheme Renote -configuration Release -derivedDataPath build build
+ditto build/Build/Products/Release/Renote.app /Applications/Renote.app
+```
+
+## Run it in a browser instead
 
 Needs Node 20 or newer. There are no dependencies to install.
 

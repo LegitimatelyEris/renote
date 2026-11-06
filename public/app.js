@@ -182,13 +182,7 @@ function renderSidebar(r = parseHash()) {
     <div class="side-head">Recents</div>
     ${recents.map(n => item(noteHref(n.path), 'bubble', n.title, n.path === state.path && r.view === 'note', '', 'recent')).join('')}
   `;
-  $('#new-subject').onclick = async () => {
-    const name = prompt('Name the new subject', 'New Subject');
-    if (!name) return;
-    const { name: made } = await api.send('POST', '/api/subject', { name });
-    await loadIndex();
-    location.hash = '#/subject/' + encodeURIComponent(made);
-  };
+  $('#new-subject').onclick = () => newSubjectPrompt();
 }
 
 // ---------- Home ----------
@@ -412,7 +406,7 @@ function wireBlocks(root) {
   });
   root.querySelectorAll('.check').forEach(c => c.onclick = () => toggleChecklist(Number(c.dataset.line)));
   root.querySelectorAll('[data-copy]').forEach(b => b.onclick = () => {
-    navigator.clipboard.writeText(b.closest('.code').querySelector('pre').textContent);
+    copyText(b.closest('.code').querySelector('pre').textContent);
     toast('Copied');
   });
 }
@@ -763,6 +757,40 @@ addEventListener('beforeunload', e => { if (state.text !== state.saved) { saveNo
 addEventListener('hashchange', () => { reviseKeys = null; route(); scrollTo(0, 0); });
 addEventListener('resize', specks);
 
+// ---------- Mac app bridge ----------
+const native = window.webkit?.messageHandlers?.renote;
+function copyText(text) {
+  if (native) native.postMessage({ copy: text });
+  else navigator.clipboard?.writeText(text);
+}
+// Tell the Mac app which parts of the top bar are controls, so the rest drags the window.
+function reportNoDrag() {
+  if (!native) return;
+  const nav = $('.nav');
+  const rects = [...nav.querySelectorAll('a, button, input, label')].map(el => {
+    const r = el.getBoundingClientRect();
+    return { x: r.left, y: r.top, w: r.width, h: r.height };
+  });
+  native.postMessage({ noDrag: rects, bar: nav.getBoundingClientRect().height });
+}
+async function newSubjectPrompt() {
+  const name = prompt('Name the new subject', 'New Subject');
+  if (!name) return;
+  const { name: made } = await api.send('POST', '/api/subject', { name });
+  await loadIndex();
+  location.hash = '#/subject/' + encodeURIComponent(made);
+}
+window.renote = {
+  newNote: () => newNote(current()?.subject || null),
+  newSubject: newSubjectPrompt,
+  focusSearch: () => $('#search').focus(),
+  go: hash => { location.hash = hash; },
+  setMode: mode => { const r = parseHash(); if (r.view === 'note') location.hash = noteHref(r.path, mode); },
+};
+addEventListener('resize', reportNoDrag);
+
 specks();
 await loadIndex();
 route();
+reportNoDrag();
+setTimeout(reportNoDrag, 500); // after web fonts settle

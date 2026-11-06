@@ -52,6 +52,9 @@ kbd { font-family: var(--mono); font-size: 11px; color: var(--faint); border: 1p
   backdrop-filter: blur(16px) saturate(140%);
   border-bottom: 1px solid var(--line);
 }
+/* Inside the Mac app the top bar doubles as the title bar: leave room for the window buttons. */
+.native .nav { padding-left: 88px; user-select: none; -webkit-user-select: none; }
+.native .nav .links { cursor: default; }
 .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 16px; letter-spacing: -0.2px; }
 .links { display: flex; gap: 26px; margin: 0 auto; }
 .links a { font-size: 14px; color: var(--muted); transition: color .15s; }

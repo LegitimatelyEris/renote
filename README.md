@@ -1,6 +1,6 @@
 # Renote
 
-A minimalist macOS notes app that makes revision more fun. Notes are plain Markdown files (in `~/Documents/Renote` by default), and every note has three modes:
+A minimalist macOS notes app that makes revision more fun. Notes are plain Markdown files (in `~/Documents/Renote` by default). Sub-folders become **subjects** in the sidebar, a floating composer at the bottom adds text, flashcards, definitions, to-dos and gaps to the open note, and a side panel shows the note's outline and what there is to revise. Every note has three modes:
 
 - **Write** (⌘1): a calm, centred Markdown editor with light syntax colouring, list continuation, and Format / Insert menus.
 - **Read** (⌘2): your note as a typographic page with numbered sections, flippable flashcards, quizzes, callouts and tickable checklists.

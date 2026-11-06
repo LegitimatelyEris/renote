@@ -96,10 +96,11 @@ enum Inline {
                 var piece: AttributedString
                 switch pair.open {
                 case "`":
-                    piece = AttributedString(String(inner))
+                    // A padded grey pill, like inline code in ChatGPT.
+                    piece = AttributedString("\u{2009}" + String(inner) + "\u{2009}")
                     piece.inlinePresentationIntent = .code
-                    piece.backgroundColor = Color.white.opacity(0.08)
-                    piece.foregroundColor = Color(white: 0.88)
+                    piece.backgroundColor = Color.white.opacity(0.10)
+                    piece.foregroundColor = Color(white: 0.92)
                 case "{{":
                     piece = render(inner, o)
                     piece.backgroundColor = o.accent.opacity(o.revealCloze ? 0.18 : 0.85)

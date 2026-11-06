@@ -70,6 +70,8 @@ struct MarkdownEditor: NSViewRepresentable {
         tv.autoresizingMask = [.width]
         tv.textContainer?.widthTracksTextView = true
         scroll.documentView = tv
+        scroll.automaticallyAdjustsContentInsets = false
+        scroll.contentInsets = NSEdgeInsets(top: 20, left: 0, bottom: 170, right: 0) // clear the toolbar and composer
         tv.delegate = context.coordinator
         tv.drawsBackground = false
         tv.isRichText = false

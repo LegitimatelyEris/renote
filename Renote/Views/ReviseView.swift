@@ -269,8 +269,8 @@ private struct CardFace: View {
                 RoundedRectangle(cornerRadius: 26).fill(Color(white: 0.96))
                     .shadow(color: .white.opacity(0.12), radius: 40, y: 0)
             } else {
-                RoundedRectangle(cornerRadius: 26).fill(Color(white: 0.06))
-                    .shadow(color: .black.opacity(0.6), radius: 30, y: 16)
+                RoundedRectangle(cornerRadius: 26).fill(Theme.raised)
+                    .shadow(color: .black.opacity(0.35), radius: 24, y: 12)
             }
         }
         .overlay {

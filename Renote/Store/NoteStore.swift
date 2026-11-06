@@ -7,6 +7,8 @@ struct Note: Identifiable, Hashable {
     var title: String
     var preview: String
     var modified: Date
+    /// The subject folder the note lives in, or nil for loose notes.
+    var subject: String?
     var id: URL { url }
 }
 
@@ -35,6 +37,9 @@ final class NoteStore {
     }
     var mode: NoteMode = .read
     var search: String = ""
+    private(set) var subjects: [String] = []
+    /// Heading the Read view should scroll to (set from the Outline panel).
+    var jumpTarget: Int?
 
     private(set) var folder: URL
     private var isLoading = false
@@ -72,7 +77,9 @@ final class NoteStore {
         if !fm.fileExists(atPath: folder.path) {
             try? fm.createDirectory(at: folder, withIntermediateDirectories: true)
             try? SampleNotes.welcome.write(to: folder.appendingPathComponent("Welcome to Renote.md"), atomically: true, encoding: .utf8)
-            try? SampleNotes.biology.write(to: folder.appendingPathComponent("Cell Biology.md"), atomically: true, encoding: .utf8)
+            let biology = folder.appendingPathComponent("Biology", isDirectory: true)
+            try? fm.createDirectory(at: biology, withIntermediateDirectories: true)
+            try? SampleNotes.biology.write(to: biology.appendingPathComponent("Cell Biology.md"), atomically: true, encoding: .utf8)
         }
     }
 
@@ -96,18 +103,76 @@ final class NoteStore {
         else { NSWorkspace.shared.open(folder) }
     }
 
+    /// Reads the folder: loose notes at the top level, and one level of subject folders.
     func refresh() {
         let fm = FileManager.default
-        let urls = (try? fm.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.contentModificationDateKey],
-                                                options: [.skipsHiddenFiles])) ?? []
-        notes = urls
-            .filter { ["md", "markdown", "txt"].contains($0.pathExtension.lowercased()) }
-            .map { url in
-                let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-                let body = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
-                return Self.summarise(url: url, body: body, modified: modified)
+        let keys: [URLResourceKey] = [.contentModificationDateKey, .isDirectoryKey]
+        let top = (try? fm.contentsOfDirectory(at: folder, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles])) ?? []
+        var found: [Note] = []
+        var folders: [String] = []
+        for url in top {
+            if (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true {
+                folders.append(url.lastPathComponent)
+                let inner = (try? fm.contentsOfDirectory(at: url, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles])) ?? []
+                found += inner.filter(Self.isNote).map { Self.read($0, subject: url.lastPathComponent) }
+            } else if Self.isNote(url) {
+                found.append(Self.read(url, subject: nil))
             }
-            .sorted { $0.modified > $1.modified }
+        }
+        subjects = folders.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+        notes = found.sorted { $0.modified > $1.modified }
+    }
+
+    private static func isNote(_ url: URL) -> Bool {
+        ["md", "markdown", "txt"].contains(url.pathExtension.lowercased())
+    }
+
+    private static func read(_ url: URL, subject: String?) -> Note {
+        let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+        let body = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+        var note = summarise(url: url, body: body, modified: modified)
+        note.subject = subject
+        return note
+    }
+
+    func notes(in subject: String?) -> [Note] {
+        notes.filter { $0.subject == subject }
+    }
+
+    func newSubject() {
+        var name = "New Subject"
+        var n = 2
+        while FileManager.default.fileExists(atPath: folder.appendingPathComponent(name).path) {
+            name = "New Subject \(n)"; n += 1
+        }
+        try? FileManager.default.createDirectory(at: folder.appendingPathComponent(name), withIntermediateDirectories: true)
+        refresh()
+    }
+
+    func renameSubject(_ subject: String, to newName: String) {
+        let clean = newName.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "/", with: "-")
+        guard !clean.isEmpty, clean != subject else { return }
+        saveNow()
+        let from = folder.appendingPathComponent(subject)
+        let to = folder.appendingPathComponent(clean)
+        guard (try? FileManager.default.moveItem(at: from, to: to)) != nil else { return }
+        if let sel = selection, sel.path.hasPrefix(from.path + "/") {
+            let moved = to.appendingPathComponent(sel.lastPathComponent)
+            loadedURL = moved
+            refresh()
+            selection = moved
+        } else {
+            refresh()
+        }
+    }
+
+    /// Appends a snippet to the end of the open note, separated by a blank line.
+    func append(_ snippet: String) {
+        guard selection != nil else { return }
+        var base = text
+        while base.hasSuffix("\n\n\n") { base.removeLast() }
+        let gap = base.isEmpty ? "" : base.hasSuffix("\n\n") ? "" : base.hasSuffix("\n") ? "\n" : "\n\n"
+        text = base + gap + snippet + "\n"
     }
 
     private static func summarise(url: URL, body: String, modified: Date) -> Note {
@@ -150,19 +215,22 @@ final class NoteStore {
         guard current != text else { return }
         try? text.write(to: url, atomically: true, encoding: .utf8)
         if let index = notes.firstIndex(where: { $0.url == url }) {
+            let subject = notes[index].subject
             notes[index] = Self.summarise(url: url, body: text, modified: .now)
+            notes[index].subject = subject
             notes.sort { $0.modified > $1.modified }
         }
     }
 
-    func newNote() {
+    func newNote(in subject: String? = nil) {
         saveNow()
+        let dir = subject.map { folder.appendingPathComponent($0, isDirectory: true) } ?? folder
         var name = "Untitled"
         var n = 2
-        while FileManager.default.fileExists(atPath: folder.appendingPathComponent(name + ".md").path) {
+        while FileManager.default.fileExists(atPath: dir.appendingPathComponent(name + ".md").path) {
             name = "Untitled \(n)"; n += 1
         }
-        let url = folder.appendingPathComponent(name + ".md")
+        let url = dir.appendingPathComponent(name + ".md")
         try? "# \(name)\n\n".write(to: url, atomically: true, encoding: .utf8)
         refresh()
         mode = .write

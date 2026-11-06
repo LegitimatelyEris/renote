@@ -4,22 +4,27 @@ struct ContentView: View {
     @Bindable var store: NoteStore
     var editor: EditorController
     @State private var renaming: Note?
+    @State private var renamingSubject: String?
     @State private var newName = ""
+    @State private var collapsed: Set<String> = []
+    @State private var showInspector = true
 
-    private var currentTitle: String {
-        store.notes.first { $0.url == store.selection }?.title ?? "Renote"
-    }
-
+    private var currentNote: Note? { store.notes.first { $0.url == store.selection } }
+    private var currentTitle: String { currentNote?.title ?? "Renote" }
     private var accent: Color { NoteStore.accent(for: currentTitle) }
 
     var body: some View {
         NavigationSplitView {
             sidebar
-                .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 340)
+                .navigationSplitViewColumnWidth(min: 220, ideal: 270, max: 360)
         } detail: {
             detail
                 .toolbar { toolbar }
-                .navigationTitle("")
+                .navigationTitle(store.selection == nil ? "Renote" : currentTitle)
+                .inspector(isPresented: $showInspector) {
+                    NoteInspector(store: store, accent: accent)
+                        .inspectorColumnWidth(min: 230, ideal: 290, max: 360)
+                }
         }
         .searchable(text: $store.search, placement: .sidebar, prompt: "Search notes")
         .tint(accent)
@@ -29,25 +34,67 @@ struct ContentView: View {
             Button("Rename") { if let renaming { store.rename(renaming, to: newName) } }
             Button("Cancel", role: .cancel) {}
         }
+        .alert("Rename subject", isPresented: Binding(get: { renamingSubject != nil }, set: { if !$0 { renamingSubject = nil } })) {
+            TextField("Name", text: $newName)
+            Button("Rename") { if let renamingSubject { store.renameSubject(renamingSubject, to: newName) } }
+            Button("Cancel", role: .cancel) {}
+        }
     }
 
     // MARK: Sidebar
 
     private var sidebar: some View {
         List(selection: $store.selection) {
-            ForEach(store.filteredNotes) { note in
-                NoteRow(note: note)
-                    .tag(note.url)
-                    .contextMenu {
-                        Button("Rename…") { newName = note.url.deletingPathExtension().lastPathComponent; renaming = note }
-                        Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([note.url]) }
-                        Divider()
-                        Button("Move to Trash", role: .destructive) { store.trash(note) }
+            Button { store.newNote() } label: {
+                Label("New note", systemImage: "square.and.pencil")
+            }
+            .buttonStyle(.plain)
+            .padding(.vertical, 2)
+
+            if !store.search.isEmpty {
+                Section("Results") {
+                    ForEach(store.filteredNotes) { note in row(note, showSubject: true) }
+                }
+            } else {
+                Section {
+                    ForEach(store.subjects, id: \.self) { subject in
+                        DisclosureGroup(isExpanded: Binding(
+                            get: { !collapsed.contains(subject) },
+                            set: { open in if open { collapsed.remove(subject) } else { collapsed.insert(subject) } }
+                        )) {
+                            let notes = store.notes(in: subject)
+                            if notes.isEmpty {
+                                Text("No notes").foregroundStyle(Theme.faint).selectionDisabled()
+                            }
+                            ForEach(notes) { note in row(note) }
+                        } label: {
+                            Label(subject, systemImage: "folder")
+                                .contextMenu {
+                                    Button("New Note in \(subject)") { store.newNote(in: subject) }
+                                    Button("Rename…") { newName = subject; renamingSubject = subject }
+                                }
+                        }
                     }
+                } header: {
+                    HStack {
+                        Text("Subjects")
+                        Spacer()
+                        Button { store.newSubject() } label: { Image(systemName: "plus") }
+                            .buttonStyle(.plain)
+                            .help("New subject")
+                    }
+                }
+
+                let loose = store.notes(in: nil)
+                if !loose.isEmpty {
+                    Section("Notes") {
+                        ForEach(loose) { note in row(note) }
+                    }
+                }
             }
         }
         .overlay {
-            if store.notes.isEmpty {
+            if store.notes.isEmpty && store.subjects.isEmpty {
                 ContentUnavailableView {
                     Label("No notes yet", systemImage: "note.text")
                 } actions: {
@@ -55,11 +102,22 @@ struct ContentView: View {
                 }
             }
         }
-        .toolbar {
-            ToolbarItem {
-                Button { store.newNote() } label: { Label("New Note", systemImage: "square.and.pencil") }
-                    .help("New note (⌘N)")
+    }
+
+    private func row(_ note: Note, showSubject: Bool = false) -> some View {
+        HStack {
+            Text(note.title).lineLimit(1)
+            if showSubject, let subject = note.subject {
+                Spacer()
+                Text(subject).font(.system(size: 11)).foregroundStyle(Theme.faint)
             }
+        }
+        .tag(note.url)
+        .contextMenu {
+            Button("Rename…") { newName = note.url.deletingPathExtension().lastPathComponent; renaming = note }
+            Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([note.url]) }
+            Divider()
+            Button("Move to Trash", role: .destructive) { store.trash(note) }
         }
     }
 
@@ -69,15 +127,28 @@ struct ContentView: View {
     private var detail: some View {
         if store.selection == nil {
             ContentUnavailableView("Pick a note", systemImage: "note.text", description: Text("Or press ⌘N to start a new one."))
+                .background { Backdrop(accent: accent) }
         } else {
-            switch store.mode {
-            case .write:
-                MarkdownEditor(text: $store.text, controller: editor, accent: accent)
-                    .background { Backdrop(accent: accent) }
-            case .read:
-                ReaderView(store: store, accent: accent)
-            case .revise:
-                ReviseView(cards: store.blocks.flatMap(\.studyCards), accent: accent, title: currentTitle)
+            ZStack(alignment: .bottom) {
+                switch store.mode {
+                case .write:
+                    MarkdownEditor(text: $store.text, controller: editor, accent: accent)
+                        .background { Backdrop(accent: accent) }
+                case .read:
+                    ReaderView(store: store, accent: accent)
+                case .revise:
+                    ReviseView(cards: store.blocks.flatMap(\.studyCards), accent: accent, title: currentTitle)
+                }
+                if store.mode != .revise {
+                    // Content fades out under the composer, like a chat transcript.
+                    LinearGradient(colors: [Theme.canvas.opacity(0), Theme.canvas], startPoint: .top, endPoint: .bottom)
+                        .frame(height: 150)
+                        .allowsHitTesting(false)
+                    Composer(store: store, accent: accent)
+                        .frame(maxWidth: 730)
+                        .padding(.horizontal, 24)
+                        .padding(.bottom, 14)
+                }
             }
         }
     }
@@ -91,45 +162,20 @@ struct ContentView: View {
                 }
             }
             .pickerStyle(.segmented)
-            .labelStyle(.titleAndIcon)
+            .labelStyle(.titleOnly)
             .fixedSize()
             .disabled(store.selection == nil)
         }
-        if store.mode == .write, store.selection != nil {
-            ToolbarItemGroup(placement: .primaryAction) {
+        ToolbarItemGroup(placement: .primaryAction) {
+            if store.mode == .write, store.selection != nil {
                 Menu { FormatMenu(editor: editor) } label: { Label("Format", systemImage: "textformat") }
                     .help("Text formatting")
                 Menu { InsertMenu(editor: editor) } label: { Label("Insert", systemImage: "plus") }
                     .help("Insert a component")
             }
+            Button { showInspector.toggle() } label: { Label("Panel", systemImage: "sidebar.right") }
+                .help("Show or hide the outline panel")
         }
-    }
-}
-
-private struct NoteRow: View {
-    var note: Note
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Circle()
-                .fill(NoteStore.accent(for: note.title))
-                .frame(width: 6, height: 6)
-                .shadow(color: NoteStore.accent(for: note.title), radius: 4)
-                .padding(.top, 6)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(note.title)
-                    .font(.system(size: 13, weight: .semibold))
-                    .lineLimit(1)
-                Text(note.preview.isEmpty ? "Empty note" : note.preview)
-                    .font(.system(size: 12))
-                    .foregroundStyle(Theme.muted)
-                    .lineLimit(2)
-                Text(note.modified, format: .relative(presentation: .named))
-                    .font(.system(size: 11))
-                    .foregroundStyle(Theme.faint)
-            }
-        }
-        .padding(.vertical, 4)
     }
 }
 

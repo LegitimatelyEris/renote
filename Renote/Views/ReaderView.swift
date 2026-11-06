@@ -9,34 +9,41 @@ struct ReaderView: View {
         let blocks = store.blocks
         let cards = blocks.flatMap(\.studyCards).count
         let words = store.text.split { $0.isWhitespace || $0.isNewline }.count
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                HStack(spacing: 10) {
-                    Text("\(max(1, words / 200)) min read")
-                    if cards > 0 {
-                        Text("·")
-                        Button { store.mode = .revise } label: {
-                            Label("\(cards) to revise", systemImage: "rectangle.on.rectangle.angled")
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    HStack(spacing: 10) {
+                        Text("\(max(1, words / 200)) min read")
+                        if cards > 0 {
+                            Text("·")
+                            Button { store.mode = .revise } label: {
+                                Label("\(cards) to revise", systemImage: "rectangle.on.rectangle.angled")
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(accent)
                         }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(accent)
                     }
-                }
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(Theme.faint)
-                .padding(.bottom, -6)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Theme.faint)
+                    .padding(.bottom, -6)
 
-                BlockList(blocks: blocks, accent: accent, store: store, numberSections: true)
+                    BlockList(blocks: blocks, accent: accent, store: store, numberSections: true)
+                }
+                .frame(maxWidth: 730, alignment: .leading)
+                .padding(.horizontal, 40)
+                .padding(.top, 40)
+                .padding(.bottom, 200) // room for the composer
+                .frame(maxWidth: .infinity)
             }
-            .frame(maxWidth: 680, alignment: .leading)
-            .padding(.horizontal, 44)
-            .padding(.vertical, 56)
-            .background { ColumnGuides() }
-            .frame(maxWidth: .infinity)
+            .scrollContentBackground(.hidden)
+            .background { Backdrop(accent: accent) }
+            .textSelection(.enabled)
+            .onChange(of: store.jumpTarget) { _, target in
+                guard let target else { return }
+                withAnimation(.smooth) { proxy.scrollTo(target, anchor: .top) }
+                store.jumpTarget = nil
+            }
         }
-        .scrollContentBackground(.hidden)
-        .background { Backdrop(accent: accent) }
-        .textSelection(.enabled)
     }
 }
 
@@ -50,6 +57,7 @@ struct BlockList: View {
         let sectionNumbers = numberSections ? Self.sectionNumbers(blocks) : [:]
         ForEach(blocks) { block in
             BlockView(block: block, accent: accent, store: store, section: sectionNumbers[block.id])
+                .id(block.id)
         }
     }
 
@@ -134,11 +142,9 @@ struct HeadingView: View {
         switch level {
         case 1:
             Text(rendered)
-                .font(Theme.display(44, .semibold))
-                .tracking(-1.2)
-                .foregroundStyle(
-                    LinearGradient(colors: [.white, Color(white: 0.72)], startPoint: .top, endPoint: .bottom)
-                )
+                .font(Theme.display(36, .semibold))
+                .tracking(-0.9)
+                .foregroundStyle(Theme.ink)
                 .padding(.bottom, 6)
                 .modifier(BlurReveal())
         case 2:
@@ -152,8 +158,8 @@ struct HeadingView: View {
                     }
                 }
                 Text(rendered)
-                    .font(Theme.display(28, .semibold))
-                    .tracking(-0.6)
+                    .font(Theme.display(24, .semibold))
+                    .tracking(-0.4)
                     .foregroundStyle(Theme.ink)
             }
             .padding(.top, 28)
@@ -251,25 +257,42 @@ struct ListBlock: View {
 struct CodeBlock: View {
     var language: String
     var text: String
+    @State private var copied = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if !language.isEmpty {
-                Text(language.uppercased())
-                    .font(.system(.caption2, design: .monospaced).weight(.semibold))
-                    .foregroundStyle(.tertiary)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "chevron.left.forwardslash.chevron.right")
+                    .font(.system(size: 11, weight: .semibold))
+                Text(language.isEmpty ? "Code" : language.capitalized)
+                    .font(.system(size: 13, weight: .medium))
+                Spacer()
+                Button {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(text, forType: .string)
+                    withAnimation(.snappy) { copied = true }
+                    Task { try? await Task.sleep(for: .seconds(1.5)); withAnimation { copied = false } }
+                } label: {
+                    Image(systemName: copied ? "checkmark" : "square.on.square")
+                        .font(.system(size: 13))
+                        .contentTransition(.symbolEffect(.replace))
+                }
+                .buttonStyle(.plain)
+                .help("Copy")
             }
+            .foregroundStyle(Theme.muted)
             ScrollView(.horizontal, showsIndicators: false) {
                 Text(text)
                     .font(.system(size: 13, design: .monospaced))
-                    .lineSpacing(3)
+                    .foregroundStyle(Color(red: 0.78, green: 0.66, blue: 1.0))
+                    .lineSpacing(4)
             }
         }
-        .foregroundStyle(Color(white: 0.85))
-        .padding(16)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.black.opacity(0.5), in: .rect(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.hairline))
+        .background(Theme.raised, in: .rect(cornerRadius: 18))
+        .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Theme.hairline))
     }
 }
 
@@ -346,12 +369,14 @@ struct ImageBlock: View {
 /// Dark, quiet palette: near-black canvas, hairlines, grey body text with white emphasis.
 enum Theme {
     static let body = Font.system(size: 16, weight: .regular)
-    static let canvas = Color(red: 0.035, green: 0.035, blue: 0.04)
-    static let ink = Color.white
-    static let muted = Color(white: 0.62)
-    static let faint = Color(white: 0.38)
-    static let surface = Color.white.opacity(0.035)
-    static let hairline = Color.white.opacity(0.08)
+    // Flat neutral greys, like the ChatGPT desktop app.
+    static let canvas = Color(white: 0.129)
+    static let raised = Color(white: 0.17)
+    static let ink = Color(white: 0.96)
+    static let muted = Color(white: 0.84)
+    static let faint = Color(white: 0.55)
+    static let surface = Color.white.opacity(0.045)
+    static let hairline = Color.white.opacity(0.09)
 
     static func display(_ size: CGFloat, _ weight: Font.Weight = .semibold) -> Font {
         .system(size: size, weight: weight)
@@ -363,22 +388,7 @@ struct Backdrop: View {
     var accent: Color
 
     var body: some View {
-        ZStack {
-            Theme.canvas
-            RadialGradient(colors: [Color.white.opacity(0.10), .clear], center: .topLeading, startRadius: 0, endRadius: 700)
-            RadialGradient(colors: [accent.opacity(0.10), .clear], center: .top, startRadius: 0, endRadius: 520)
-                .offset(y: -200)
-            Canvas { ctx, size in
-                var rng = SplitMix(seed: 7)
-                for _ in 0..<70 {
-                    let p = CGPoint(x: rng.next() * size.width, y: rng.next() * size.height)
-                    let r = 0.5 + rng.next() * 0.9
-                    ctx.fill(Path(ellipseIn: CGRect(x: p.x, y: p.y, width: r, height: r)),
-                             with: .color(.white.opacity(0.08 + rng.next() * 0.22)))
-                }
-            }
-        }
-        .ignoresSafeArea()
+        Theme.canvas.ignoresSafeArea()
     }
 }
 

@@ -173,7 +173,7 @@ function renderSidebar(r = parseHash()) {
     `<a class="side-item ${cls} ${on ? 'on' : ''}" href="${href}">${icon(ic)}<span class="title">${esc(label)}</span>${extra}</a>`;
   const inProgress = r.view === 'progress';
   $('#sidebar').innerHTML = `
-    <div class="workspace"><span class="tile">R</span>Renote<span class="count">${state.notes.length} notes</span></div>
+    <a class="workspace" href="#/"><span class="logo"><svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M6 5h8a5 5 0 0 1 0 10h-3l5 5" stroke="currentColor" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span>Renote<span class="count">${state.notes.length} notes</span></a>
     <div class="segment"><a href="#/" class="${inProgress ? '' : 'on'}">Notes</a><a href="#/progress" class="${inProgress ? 'on' : ''}">Progress</a></div>
     ${item('#/', 'grid', 'All notes', r.view === 'home' && !r.subject, `<span class="count">${state.notes.length}</span>`)}
     ${item('#/revise', 'cards', 'Revise', r.view === 'revise-all')}
@@ -397,7 +397,9 @@ const FONTS = [
   { name: 'Caveat', css: "Caveat, cursive", note: 'Handwritten' },
 ];
 const ACCENTS = { orange: '#f97316', amber: '#f59e0b', lime: '#84cc16', green: '#22c55e', teal: '#14b8a6', blue: '#3b82f6', violet: '#8b5cf6', pink: '#ec4899', red: '#ef4444', white: '#e5e5e5' };
-const DEFAULT_TYPE = { head: 'Inter', body: 'Inter', size: 17, width: 720, leading: 1.7, accent: 'orange' };
+const DEFAULT_TYPE = { head: 'Inter', body: 'Inter', size: 17, width: 720, leading: 1.7, accent: 'orange', bg: '#0a0a0b', bgAlpha: 0.72, blur: 30 };
+// Window colours to start from; any colour works through the picker.
+const WINDOW_COLORS = ['#0a0a0b', '#1c1c1e', '#0f172a', '#1e1b4b', '#2e1065', '#3b0a24', '#052e2b', '#14261b', '#3a2a0a', '#5c4a1e'];
 let typeSettings = { ...DEFAULT_TYPE };
 const loadedFonts = new Set(['Inter', 'JetBrains Mono']);
 
@@ -424,6 +426,10 @@ function applyType() {
   root.setProperty('--measure', t.width >= 1500 ? '100%' : t.width + 'px');
   root.setProperty('--leading', t.leading);
   root.setProperty('--accent', ACCENTS[t.accent] || ACCENTS.orange);
+  // Window tint, and in the Mac app the blur of the desktop behind it.
+  root.setProperty('--win-bg', t.bg || DEFAULT_TYPE.bg);
+  root.setProperty('--win-alpha', String(t.bgAlpha ?? DEFAULT_TYPE.bgAlpha));
+  window.webkit?.messageHandlers?.renote?.postMessage({ window: { blur: Number(t.blur ?? DEFAULT_TYPE.blur) } });
 }
 
 let typeSaveTimer;
@@ -443,14 +449,18 @@ function toggleTypePanel() {
   const fontList = which => FONTS.map(f => `<button class="font-opt ${typeSettings[which] === f.name ? 'on' : ''}" data-font="${which}|${esc(f.name)}" style="font-family:${esc(f.css)}">
       <span class="fn">${esc(f.name)}</span><span class="fd">${esc(f.note)}</span></button>`).join('');
   panel.innerHTML = `
-    <div class="tp-head"><span>Type</span><button class="link" id="tp-reset">Reset</button></div>
+    <div class="tp-head"><span>Look</span><button class="link" id="tp-reset">Reset</button></div>
     <div class="tp-tabs"><button class="on" data-tab="head">Headings</button><button data-tab="body">Body</button></div>
     <div class="font-list" data-list="head">${fontList('head')}</div>
     <div class="font-list" data-list="body" hidden>${fontList('body')}</div>
     <label class="tp-row"><span>Size</span><input type="range" min="14" max="22" step="1" id="tp-size" value="${typeSettings.size}"><b id="tp-size-v">${typeSettings.size}px</b></label>
     <label class="tp-row"><span>Width</span><input type="range" min="560" max="1500" step="20" id="tp-width" value="${typeSettings.width}"><b id="tp-width-v">${typeSettings.width >= 1500 ? 'Full' : typeSettings.width}</b></label>
     <label class="tp-row"><span>Spacing</span><input type="range" min="1.4" max="2.1" step="0.05" id="tp-lead" value="${typeSettings.leading}"><b id="tp-lead-v">${typeSettings.leading}</b></label>
-    <div class="tp-row"><span>Accent</span><div class="accents">${Object.entries(ACCENTS).map(([k, v]) => `<button class="acc ${typeSettings.accent === k ? 'on' : ''}" data-acc="${k}" title="${k}" style="background:${v}"></button>`).join('')}</div></div>`;
+    <div class="tp-row"><span>Accent</span><div class="accents">${Object.entries(ACCENTS).map(([k, v]) => `<button class="acc ${typeSettings.accent === k ? 'on' : ''}" data-acc="${k}" title="${k}" style="background:${v}"></button>`).join('')}</div></div>
+    <div class="tp-section">Window</div>
+    <div class="win-row"><span>Colour</span><div class="win-swatches">${WINDOW_COLORS.map(c => `<button class="win-swatch ${typeSettings.bg === c ? 'on' : ''}" data-bg="${c}" style="background:${c}" title="${c}"></button>`).join('')}<input class="win-custom" type="color" id="tp-bg" value="${typeSettings.bg}" title="Any colour"></div></div>
+    <label class="tp-row"><span>Opacity</span><input type="range" min="0" max="1" step="0.01" id="tp-alpha" value="${typeSettings.bgAlpha}"><b id="tp-alpha-v">${Math.round(typeSettings.bgAlpha * 100)}%</b></label>
+    ${window.renoteNative ? `<label class="tp-row"><span>Blur</span><input type="range" min="0" max="60" step="1" id="tp-blur" value="${typeSettings.blur}"><b id="tp-blur-v">${typeSettings.blur}</b></label>` : '<div class="tp-note">Opacity shows your desktop through the window in the Mac app.</div>'}`;
   document.body.appendChild(panel);
   panel.addEventListener('click', e => e.stopPropagation());
   panel.addEventListener('mousedown', e => e.stopPropagation());
@@ -473,6 +483,21 @@ function toggleTypePanel() {
     panel.querySelectorAll('[data-acc]').forEach(x => x.classList.toggle('on', x === b));
     saveType();
   });
+  panel.querySelectorAll('[data-bg]').forEach(b => b.onclick = () => {
+    typeSettings.bg = b.dataset.bg;
+    panel.querySelector('#tp-bg').value = b.dataset.bg;
+    panel.querySelectorAll('[data-bg]').forEach(x => x.classList.toggle('on', x === b));
+    saveType();
+  });
+  panel.querySelector('#tp-bg').oninput = e => {
+    typeSettings.bg = e.target.value;
+    panel.querySelectorAll('[data-bg]').forEach(x => x.classList.toggle('on', x.dataset.bg === e.target.value));
+    saveType();
+  };
+  const alpha = panel.querySelector('#tp-alpha');
+  alpha.oninput = () => { typeSettings.bgAlpha = Number(alpha.value); panel.querySelector('#tp-alpha-v').textContent = Math.round(alpha.value * 100) + '%'; saveType(); };
+  const blur = panel.querySelector('#tp-blur');
+  if (blur) blur.oninput = () => { typeSettings.blur = Number(blur.value); panel.querySelector('#tp-blur-v').textContent = blur.value; saveType(); };
   panel.querySelector('#tp-reset').onclick = () => { typeSettings = { ...DEFAULT_TYPE }; saveType(); panel.remove(); toggleTypePanel(); };
 }
 document.addEventListener('mousedown', e => { if (!e.target.closest('#type-panel, #type-btn')) $('#type-panel')?.remove(); });

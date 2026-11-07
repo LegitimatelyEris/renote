@@ -56,6 +56,10 @@ final class RenoteWebView: WKWebView, WKNavigationDelegate, WKUIDelegate, WKScri
             noDragRects = rects.map { CGRect(x: $0["x"] ?? 0, y: $0["y"] ?? 0, width: $0["w"] ?? 0, height: $0["h"] ?? 0) }
             barHeight = body["bar"] as? Double ?? 56
         }
+        if let settings = body["window"] as? [String: Any], let window {
+            // The page sends its blur setting whenever the Look panel changes.
+            WindowBlur.set(window, radius: (settings["blur"] as? NSNumber)?.intValue ?? 30)
+        }
         if let text = body["copy"] as? String {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(text, forType: .string)

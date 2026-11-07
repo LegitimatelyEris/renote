@@ -14,31 +14,30 @@
 <body>
   <canvas id="specks" aria-hidden="true"></canvas>
 
-  <header class="nav">
-    <a class="brand" href="#/">
-      <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M6 5h8a5 5 0 0 1 0 10h-3l5 5" stroke="currentColor" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      Renote
-    </a>
-    <nav class="links">
-      <a href="#/" data-nav="home">Notes</a>
-      <a href="#/revise" data-nav="revise">Revise</a>
-      <a href="#/progress" data-nav="progress">Progress</a>
-    </nav>
-    <div class="nav-actions">
-      <label class="search">
-        <svg viewBox="0 0 24 24" width="15" height="15"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2" fill="none"/><path d="m20 20-3.5-3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-        <input id="search" type="search" placeholder="Search notes" autocomplete="off">
-        <kbd>/</kbd>
-      </label>
-      <button class="btn btn-white" id="new-note">New note</button>
-    </div>
-  </header>
-
-  <div class="announce" id="announce"></div>
+  <!-- Window tint: your chosen colour at your chosen opacity. In the Mac app the desktop shows through, blurred. -->
+  <div id="tint" aria-hidden="true"></div>
 
   <div class="frame">
     <aside class="sidebar" id="sidebar"></aside>
-    <main id="main" tabindex="-1"></main>
+    <div class="col">
+      <header class="nav">
+        <nav class="links">
+          <a href="#/" data-nav="home">Notes</a>
+          <a href="#/revise" data-nav="revise">Revise</a>
+          <a href="#/progress" data-nav="progress">Progress</a>
+        </nav>
+        <div class="nav-actions">
+          <label class="search">
+            <svg viewBox="0 0 24 24" width="15" height="15"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2" fill="none"/><path d="m20 20-3.5-3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            <input id="search" type="search" placeholder="Search notes" autocomplete="off">
+            <kbd>/</kbd>
+          </label>
+          <button class="btn btn-white" id="new-note">New note</button>
+        </div>
+      </header>
+      <div class="announce" id="announce"></div>
+      <main id="main" tabindex="-1"></main>
+    </div>
   </div>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>

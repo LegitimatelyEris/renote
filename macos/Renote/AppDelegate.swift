@@ -29,10 +29,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.title = "Renote"
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
-        window.backgroundColor = .black
         window.appearance = NSAppearance(named: .darkAqua)
         window.minSize = NSSize(width: 820, height: 560)
-        window.contentView = web
+        // The page sits in a plain container so a blur view can go behind it if needed.
+        let container = NSView()
+        web.frame = container.bounds
+        web.autoresizingMask = [.width, .height]
+        container.addSubview(web)
+        window.contentView = container
+        WindowBlur.prepare(window)
         window.setFrameAutosaveName("RenoteMain")
         if !window.setFrameUsingName("RenoteMain") { window.center() }
         window.makeKeyAndOrderFront(nil)

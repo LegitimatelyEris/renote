@@ -7,7 +7,7 @@ settings:
   base:
     SWIFT_VERSION: "6.0"
     SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
-    MARKETING_VERSION: "0.1.0"
+    MARKETING_VERSION: "1.0.0"
     CURRENT_PROJECT_VERSION: "1"
 targets:
   Renote:
@@ -16,8 +16,10 @@ targets:
     sources: [Renote]
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.eriskelmendi.renote
+        # A separate bundle id so it can sit next to the web-based app while it's tested.
+        PRODUCT_BUNDLE_IDENTIFIER: com.eriskelmendi.renote.native
         PRODUCT_NAME: Renote
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: Renote
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity

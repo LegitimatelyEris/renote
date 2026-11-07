@@ -5,6 +5,8 @@ import Foundation
 struct Block: Identifiable, Hashable {
     let id: Int
     let kind: Kind
+    /// First source line of the block, so View can jump into Edit at the right spot.
+    var line: Int = 0
 
     indirect enum Kind: Hashable {
         case heading(level: Int, text: String)

@@ -1,63 +1,81 @@
+import AppKit
 import SwiftUI
 
 extension CalloutStyle {
     var tint: Color {
         switch self {
         case .note: Color(white: 0.7)
-        case .tip: Color(red: 0.35, green: 0.85, blue: 0.55)
-        case .info: Color(red: 0.40, green: 0.65, blue: 1.0)
-        case .important: Color(red: 0.70, green: 0.55, blue: 1.0)
-        case .warning: Color(red: 1.0, green: 0.62, blue: 0.25)
-        case .danger: Color(red: 1.0, green: 0.42, blue: 0.40)
-        case .example: Color(red: 0.30, green: 0.80, blue: 0.80)
-        case .question: Color(red: 0.55, green: 0.60, blue: 1.0)
-        case .summary: Color(red: 0.45, green: 0.85, blue: 0.75)
-        case .remember: Color(red: 1.0, green: 0.50, blue: 0.70)
+        case .tip: Color(hex: "#4ade80")
+        case .info: Color(hex: "#60a5fa")
+        case .important: Color(hex: "#c084fc")
+        case .warning: Color(hex: "#fb923c")
+        case .danger: Color(hex: "#f87171")
+        case .example: Color(hex: "#2dd4bf")
+        case .question: Color(hex: "#818cf8")
+        case .summary: Color(hex: "#5eead4")
+        case .remember: Color(hex: "#f472b6")
         }
     }
 }
 
-/// The shared look for every component: a faint raised panel with a hairline edge.
-struct Panel: ViewModifier {
-    var radius: CGFloat = 14
-    var glow: Color? = nil
-
-    func body(content: Content) -> some View {
-        content
-            .background {
-                RoundedRectangle(cornerRadius: radius)
-                    .fill(Theme.surface)
-                    .overlay(alignment: .top) {
-                        if let glow {
-                            RoundedRectangle(cornerRadius: radius)
-                                .fill(RadialGradient(colors: [glow.opacity(0.16), .clear], center: .topLeading, startRadius: 0, endRadius: 320))
-                        }
-                    }
-            }
-            .overlay {
-                RoundedRectangle(cornerRadius: radius)
-                    .strokeBorder(LinearGradient(colors: [Color.white.opacity(0.14), Color.white.opacity(0.05)],
-                                                 startPoint: .top, endPoint: .bottom))
-            }
-    }
-}
-
-extension View {
-    func panel(radius: CGFloat = 14, glow: Color? = nil) -> some View { modifier(Panel(radius: radius, glow: glow)) }
-}
-
-/// Small uppercase label used at the top of components.
-struct Eyebrow: View {
+/// Body text with hidden gaps; click to reveal them.
+struct GapParagraph: View {
     var text: String
-    var color: Color = Theme.faint
-    var symbol: String? = nil
+    var look: LookSettings
+    var lede = false
+    @State private var revealed = false
 
     var body: some View {
-        HStack(spacing: 6) {
-            if let symbol { Image(systemName: symbol).font(.system(size: 11, weight: .semibold)) }
-            Text(text.uppercased()).font(.system(size: 11, weight: .semibold)).tracking(1)
+        Text(Inline.render(text, .init(accent: look.accentColor, revealCloze: revealed)))
+            .font(look.body.font(look.size * (lede ? 1.2 : 1)))
+            .foregroundStyle(Theme.body)
+            .lineSpacing(look.size * (look.leading - 1.2))
+            .fixedSize(horizontal: false, vertical: true)
+            .contentShape(Rectangle())
+            .onTapGesture { withAnimation(.easeOut(duration: 0.2)) { revealed.toggle() } }
+            .help(revealed ? "Click to hide the gaps" : "Click to reveal the gaps")
+    }
+}
+
+struct ListBlock: View {
+    var items: [ListItem]
+    var ordered: Bool
+    var store: NoteStore
+
+    var body: some View {
+        let look = store.look
+        VStack(alignment: .leading, spacing: look.size * 0.35) {
+            ForEach(Array(items.enumerated()), id: \.offset) { index, item in
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    if let checked = item.checked {
+                        Button { withAnimation(.snappy) { store.toggleChecklist(line: item.line) } } label: {
+                            RoundedRectangle(cornerRadius: 5)
+                                .fill(checked ? look.accentColor : .clear)
+                                .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(checked ? look.accentColor : Color.white.opacity(0.3)))
+                                .overlay { if checked { Image(systemName: "checkmark").font(.system(size: 10, weight: .bold)).foregroundStyle(.black) } }
+                                .frame(width: 17, height: 17)
+                                .alignmentGuide(.firstTextBaseline) { $0[.bottom] - 3 }
+                        }
+                        .buttonStyle(.plain)
+                    } else if ordered {
+                        Text("\(index + 1)").font(.system(size: 12, design: .monospaced)).foregroundStyle(Theme.faint).frame(minWidth: 16, alignment: .trailing)
+                    } else {
+                        Rectangle().fill(Theme.faint).frame(width: 10, height: 1.5).alignmentGuide(.firstTextBaseline) { $0[.bottom] + look.size * 0.3 }
+                    }
+                    Group {
+                        if item.text.contains("{{") { GapParagraph(text: item.text, look: look) }
+                        else {
+                            Text(Inline.render(item.text, .init(accent: look.accentColor)))
+                                .font(look.body.font(look.size)).lineSpacing(look.size * (look.leading - 1.3))
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .foregroundStyle(item.checked == true ? Theme.faint : Theme.body)
+                    .strikethrough(item.checked == true, color: Theme.faint)
+                }
+                .padding(.leading, CGFloat(item.indent) * 22)
+            }
         }
-        .foregroundStyle(color)
     }
 }
 
@@ -65,34 +83,16 @@ struct CalloutView: View {
     var style: CalloutStyle
     var title: String
     var content: [Block]
-    var accent: Color
-    var store: NoteStore?
-
-    init(style: CalloutStyle, title: String, body: [Block], accent: Color, store: NoteStore?) {
-        self.style = style
-        self.title = title
-        self.content = body
-        self.accent = accent
-        self.store = store
-    }
+    var store: NoteStore
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                Image(systemName: style.symbol)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(style.tint)
-                    .frame(width: 24, height: 24)
-                    .background(style.tint.opacity(0.14), in: .rect(cornerRadius: 7))
-                Text(Inline.render(title, .init(accent: style.tint)))
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(Theme.ink)
+            HStack(spacing: 10) {
+                Image(systemName: style.symbol).font(.system(size: 12, weight: .semibold)).foregroundStyle(style.tint)
+                    .frame(width: 24, height: 24).background(style.tint.opacity(0.15), in: .rect(cornerRadius: 7))
+                Text(Inline.render(title, .init(accent: style.tint))).font(.system(size: 14, weight: .medium)).foregroundStyle(Theme.text)
             }
-            if !content.isEmpty {
-                VStack(alignment: .leading, spacing: 12) {
-                    BlockList(blocks: content, accent: style.tint, store: store)
-                }
-            }
+            ForEach(content) { b in BlockView(block: b, store: store) }
         }
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -100,74 +100,121 @@ struct CalloutView: View {
     }
 }
 
+struct CodeBlock: View {
+    var language: String
+    var text: String
+    @State private var copied = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Label(language.isEmpty ? "code" : language, systemImage: "chevron.left.forwardslash.chevron.right")
+                Spacer()
+                Button {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(text, forType: .string)
+                    copied = true
+                    Task { try? await Task.sleep(for: .seconds(1.5)); copied = false }
+                } label: { Label(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc") }
+                .buttonStyle(.plain)
+            }
+            .font(.system(size: 12)).foregroundStyle(Theme.faint)
+            .padding(.horizontal, 14).padding(.vertical, 10)
+            .overlay(alignment: .bottom) { Rectangle().fill(Theme.lineSoft).frame(height: 1) }
+            ScrollView(.horizontal, showsIndicators: false) {
+                Text(text).font(.system(size: 13, design: .monospaced)).foregroundStyle(Color(white: 0.83)).lineSpacing(5)
+                    .padding(.horizontal, 16).padding(.vertical, 14).textSelection(.enabled)
+            }
+        }
+        .panel()
+    }
+}
+
+struct TableBlock: View {
+    var header: [String]
+    var rows: [[String]]
+    var look: LookSettings
+
+    var body: some View {
+        Grid(alignment: .leading, horizontalSpacing: 0, verticalSpacing: 0) {
+            GridRow {
+                ForEach(header.indices, id: \.self) { i in
+                    Text(Inline.render(header[i], .init(accent: look.accentColor))).font(.system(size: 12, weight: .medium)).foregroundStyle(Theme.faint)
+                        .padding(.horizontal, 16).padding(.vertical, 12).frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            ForEach(rows.indices, id: \.self) { r in
+                Rectangle().fill(r == 0 ? Theme.line : Theme.lineSoft).frame(height: 1).gridCellUnsizedAxes(.horizontal)
+                GridRow {
+                    ForEach(header.indices, id: \.self) { c in
+                        Text(Inline.render(c < rows[r].count ? rows[r][c] : "", .init(accent: look.accentColor)))
+                            .font(.system(size: 14)).foregroundStyle(c == 0 ? Theme.text : Theme.muted)
+                            .padding(.horizontal, 16).padding(.vertical, 12).frame(maxWidth: .infinity, alignment: .leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+        }
+        .panel()
+    }
+}
+
 struct FlashcardView: View {
     var question: String
     var answer: String
-    var accent: Color
+    var look: LookSettings
     @State private var flipped = false
 
     var body: some View {
         ZStack {
-            face(isAnswer: false, text: question)
-                .opacity(flipped ? 0 : 1)
-            face(isAnswer: true, text: answer)
-                .opacity(flipped ? 1 : 0)
-                .rotation3DEffect(.degrees(180), axis: (0, 1, 0))
+            face(answer: false).opacity(flipped ? 0 : 1)
+            face(answer: true).opacity(flipped ? 1 : 0).rotation3DEffect(.degrees(180), axis: (0, 1, 0))
         }
         .rotation3DEffect(.degrees(flipped ? 180 : 0), axis: (0, 1, 0), perspective: 0.4)
         .contentShape(Rectangle())
-        .onTapGesture { withAnimation(.spring(duration: 0.5, bounce: 0.2)) { flipped.toggle() } }
+        .onTapGesture { withAnimation(.spring(duration: 0.55, bounce: 0.15)) { flipped.toggle() } }
         .help("Click to flip")
     }
 
-    private func face(isAnswer: Bool, text: String) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
+    private func face(answer: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Eyebrow(text: isAnswer ? "Answer" : "Question", color: isAnswer ? accent : Theme.faint)
+                Text(answer ? "Answer" : "Question").font(.system(size: 12))
                 Spacer()
-                Image(systemName: "arrow.trianglehead.2.clockwise.rotate.90")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Theme.faint)
+                Image(systemName: "arrow.trianglehead.2.clockwise.rotate.90").font(.system(size: 11))
             }
-            Text(Inline.render(text, .init(accent: accent)))
-                .font(.system(size: 18, weight: .medium))
-                .tracking(-0.2)
-                .foregroundStyle(isAnswer ? Theme.muted : Theme.ink)
-                .lineSpacing(4)
+            .foregroundStyle(answer ? Color.black.opacity(0.45) : Theme.faint)
+            Text(Inline.render(answer ? self.answer : question, .init(accent: look.accentColor)))
+                .font(look.body.font(look.size * 1.0, .medium))
+                .foregroundStyle(answer ? Color(white: 0.07) : Theme.text)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
             Spacer(minLength: 0)
         }
-        .padding(22)
-        .frame(maxWidth: .infinity, minHeight: 128, alignment: .topLeading)
-        .panel(radius: 18, glow: isAnswer ? accent : .white)
+        .padding(.horizontal, 20).padding(.vertical, 18)
+        .frame(maxWidth: .infinity, minHeight: 120, alignment: .topLeading)
+        .background(answer ? Color(white: 0.96) : Color(white: 0.08), in: .rect(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(answer ? .clear : Theme.line))
     }
 }
 
-struct DefinitionView: View {
+struct DefinitionRow: View {
     var term: String
     var meaning: String
-    var accent: Color
+    var look: LookSettings
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 18) {
-            Text(Inline.render(term, .init(accent: accent)))
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(Theme.ink)
-                .frame(width: 150, alignment: .leading)
-                .fixedSize(horizontal: false, vertical: true)
-            Text(Inline.render(meaning, .init(accent: accent)))
-                .font(.system(size: 15))
-                .foregroundStyle(Theme.muted)
-                .lineSpacing(4)
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                RoundedRectangle(cornerRadius: 2).fill(look.accentColor).frame(width: 6, height: 6)
+                Text(Inline.render(term, .init(accent: look.accentColor))).font(look.body.font(look.size * 0.9, .medium)).foregroundStyle(Theme.text)
+            }
+            .frame(width: 170, alignment: .leading)
+            Text(Inline.render(meaning, .init(accent: look.accentColor))).font(look.body.font(look.size * 0.9)).foregroundStyle(Theme.muted)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.vertical, 14)
-        .padding(.horizontal, 18)
-        .overlay(alignment: .leading) {
-            Capsule().fill(accent).frame(width: 2, height: 16).offset(x: -1)
-        }
+        .padding(.horizontal, 18).padding(.vertical, 14)
         .panel(radius: 12)
     }
 }
@@ -175,59 +222,40 @@ struct DefinitionView: View {
 struct QuizView: View {
     var question: String
     var options: [QuizOption]
-    var accent: Color
+    var look: LookSettings
     @State private var picked: Int?
 
-    private let right = Color(red: 0.35, green: 0.85, blue: 0.55)
-    private let wrong = Color(red: 1.0, green: 0.42, blue: 0.40)
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Eyebrow(text: "Quiz", color: accent, symbol: "checklist")
-            Text(Inline.render(question, .init(accent: accent)))
-                .font(.system(size: 18, weight: .semibold))
-                .tracking(-0.2)
-                .foregroundStyle(Theme.ink)
-                .fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Quiz", systemImage: "checklist").font(.system(size: 12)).foregroundStyle(Theme.faint)
+            Text(Inline.render(question, .init(accent: look.accentColor))).font(look.body.font(look.size, .medium)).foregroundStyle(Theme.text)
             VStack(spacing: 8) {
-                ForEach(options.indices, id: \.self) { i in optionRow(i) }
+                ForEach(options.indices, id: \.self) { i in option(i) }
             }
             if let picked {
-                Text(options[picked].correct ? "Nice one." : "Not quite. The right answer is marked.")
-                    .font(.system(size: 13))
-                    .foregroundStyle(Theme.faint)
-                    .transition(.opacity)
+                Text(options[picked].correct ? "Nice one." : "Not quite. The right answer is marked.").font(.system(size: 13)).foregroundStyle(Theme.faint)
             }
         }
-        .padding(20)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .panel(radius: 16, glow: accent)
+        .padding(18).frame(maxWidth: .infinity, alignment: .leading)
+        .panel(radius: 16, glow: look.accentColor)
     }
 
-    private func optionRow(_ i: Int) -> some View {
-        let option = options[i]
-        let answered = picked != nil
-        let isPicked = picked == i
-        let edge: Color = !answered ? Theme.hairline : option.correct ? right.opacity(0.6) : isPicked ? wrong.opacity(0.6) : Theme.hairline
-        let fill: Color = !answered ? Color.white.opacity(0.03) : option.correct ? right.opacity(0.10) : isPicked ? wrong.opacity(0.10) : .clear
-        return Button {
-            withAnimation(.snappy) { picked = picked == nil ? i : nil }
-        } label: {
+    private func option(_ i: Int) -> some View {
+        let o = options[i]
+        let answered = picked != nil, isPicked = picked == i
+        let edge: Color = !answered ? Theme.line : o.correct ? .green.opacity(0.5) : isPicked ? .red.opacity(0.5) : Theme.line
+        let fill: Color = !answered ? .white.opacity(0.02) : o.correct ? .green.opacity(0.08) : isPicked ? .red.opacity(0.08) : .clear
+        return Button { withAnimation(.snappy) { picked = picked == nil ? i : nil } } label: {
             HStack(spacing: 12) {
-                Text(String(Character(UnicodeScalar(65 + i)!)))
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(Theme.faint)
-                    .frame(width: 20, height: 20)
-                    .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Theme.hairline))
-                Text(Inline.render(option.text, .init(accent: accent)))
-                    .font(.system(size: 14))
-                    .foregroundStyle(answered && !option.correct && !isPicked ? Theme.faint : Theme.ink)
+                Text(String(UnicodeScalar(65 + i)!)).font(.system(size: 11, design: .monospaced)).foregroundStyle(Theme.faint)
+                    .frame(width: 22, height: 22).overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Theme.line))
+                Text(Inline.render(o.text, .init(accent: look.accentColor))).font(.system(size: 14))
+                    .foregroundStyle(answered && !o.correct && !isPicked ? Theme.faint : Theme.text)
                 Spacer()
-                if answered && option.correct { Image(systemName: "checkmark").foregroundStyle(right) }
-                else if isPicked { Image(systemName: "xmark").foregroundStyle(wrong) }
+                if answered && o.correct { Image(systemName: "checkmark").foregroundStyle(.green) }
+                else if isPicked { Image(systemName: "xmark").foregroundStyle(.red) }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
+            .padding(.horizontal, 12).padding(.vertical, 10)
             .background(fill, in: .rect(cornerRadius: 10))
             .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(edge))
             .contentShape(Rectangle())
@@ -239,46 +267,47 @@ struct QuizView: View {
 struct ToggleBlock: View {
     var title: String
     var content: [Block]
-    var accent: Color
-    var store: NoteStore?
+    var store: NoteStore
     @State private var open = false
-
-    init(title: String, body: [Block], accent: Color, store: NoteStore?) {
-        self.title = title
-        self.content = body
-        self.accent = accent
-        self.store = store
-    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Button {
-                withAnimation(.snappy) { open.toggle() }
-            } label: {
+            Button { withAnimation(.snappy) { open.toggle() } } label: {
                 HStack(spacing: 10) {
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 10, weight: .bold))
-                        .rotationEffect(.degrees(open ? 90 : 0))
-                        .foregroundStyle(Theme.faint)
-                    Text(Inline.render(title, .init(accent: accent)))
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(Theme.ink)
+                    Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold)).rotationEffect(.degrees(open ? 90 : 0)).foregroundStyle(Theme.faint)
+                    Text(Inline.render(title, .init(accent: store.look.accentColor))).font(store.look.body.font(store.look.size * 0.9)).foregroundStyle(Theme.text)
                     Spacer()
                 }
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             if open {
-                VStack(alignment: .leading, spacing: 12) {
-                    BlockList(blocks: content, accent: accent, store: store)
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(content) { b in BlockView(block: b, store: store) }
                 }
-                .padding(.leading, 20)
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                .padding(.leading, 24)
             }
         }
-        .padding(.vertical, 14)
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 16).padding(.vertical, 14)
         .panel(radius: 12)
-        .clipped()
+    }
+}
+
+struct ImageBlock: View {
+    var alt: String
+    var source: String
+    var folder: URL?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if source.hasPrefix("http"), let url = URL(string: source) {
+                AsyncImage(url: url) { $0.resizable().scaledToFit() } placeholder: { RoundedRectangle(cornerRadius: 12).fill(Theme.surface).frame(height: 160) }
+                    .clipShape(.rect(cornerRadius: 12))
+            } else if let folder, let image = NSImage(contentsOf: folder.appendingPathComponent(source)) {
+                Image(nsImage: image).resizable().scaledToFit().clipShape(.rect(cornerRadius: 12))
+                    .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.line))
+            }
+            if !alt.isEmpty { Text(alt).font(.system(size: 13)).foregroundStyle(Theme.faint) }
+        }
     }
 }

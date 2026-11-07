@@ -4,6 +4,7 @@ import Foundation
 /// does not recognise becomes a paragraph, so nothing typed is ever lost.
 struct MarkdownParser {
     private var nextID = 0
+    private var currentLine = 0
 
     static func parse(_ text: String) -> [Block] {
         var parser = MarkdownParser()
@@ -11,9 +12,9 @@ struct MarkdownParser {
         return parser.parse(lines: lines.enumerated().map { ($0.offset, $0.element) })
     }
 
-    private mutating func make(_ kind: Block.Kind) -> Block {
+    private mutating func make(_ kind: Block.Kind, line: Int? = nil) -> Block {
         defer { nextID += 1 }
-        return Block(id: nextID, kind: kind)
+        return Block(id: nextID, kind: kind, line: line ?? currentLine)
     }
 
     // MARK: Blocks
@@ -22,15 +23,17 @@ struct MarkdownParser {
         var blocks: [Block] = []
         var i = 0
         var paragraph: [String] = []
+        var paragraphStart = 0
 
         func flush(_ p: inout [String], into blocks: inout [Block], _ me: inout MarkdownParser) {
             guard !p.isEmpty else { return }
-            blocks.append(me.make(.paragraph(p.joined(separator: " "))))
+            blocks.append(me.make(.paragraph(p.joined(separator: " ")), line: paragraphStart))
             p.removeAll()
         }
 
         while i < lines.count {
             let (lineNo, raw) = lines[i]
+            currentLine = lineNo
             let line = raw.trimmingCharacters(in: .whitespaces)
 
             if line.isEmpty {
@@ -204,9 +207,9 @@ struct MarkdownParser {
                 continue
             }
 
+            if paragraph.isEmpty { paragraphStart = lineNo }
             paragraph.append(line)
             i += 1
-            _ = lineNo
         }
         flush(&paragraph, into: &blocks, &self)
         return blocks

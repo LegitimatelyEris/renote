@@ -101,8 +101,7 @@ kbd { font-family: var(--mono); font-size: 11px; color: var(--faint); border: 1p
 .frame {
   position: relative; z-index: 1;
   display: grid; grid-template-columns: 264px minmax(0, 1fr);
-  max-width: 1320px; margin: 0 auto; min-height: calc(100vh - 100px);
-  border-left: 1px dashed var(--line); border-right: 1px dashed var(--line);
+  max-width: none; margin: 0; min-height: calc(100vh - 100px);
 }
 
 /* ---------- Sidebar (styled like Profound's app mock) ---------- */
@@ -381,7 +380,7 @@ details.toggle .flow { padding: 0 18px 16px 42px; }
 body.focus .frame { grid-template-columns: 0 minmax(0, 1fr); }
 body.focus .sidebar { visibility: hidden; padding: 0; border: 0; }
 
-.page-wrap { width: min(var(--measure), 100% - 64px); margin: 0 auto; padding: 72px 0 180px; }
+.page-wrap { width: min(var(--measure), 100% - 96px); margin: 0 auto; padding: 72px 0 180px; }
 .page-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; color: var(--faint); font-size: 13px; margin-bottom: 22px; }
 .page-meta .dot { width: 3px; height: 3px; border-radius: 50%; background: currentColor; }
 .page-meta a:hover { color: var(--text); }

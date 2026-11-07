@@ -420,7 +420,8 @@ function applyType() {
   root.setProperty('--font-head', font(t.head));
   root.setProperty('--font-body', font(t.body));
   root.setProperty('--fs', t.size + 'px');
-  root.setProperty('--measure', t.width + 'px');
+  // The last step of the Width slider means "use the whole window".
+  root.setProperty('--measure', t.width >= 1500 ? '100%' : t.width + 'px');
   root.setProperty('--leading', t.leading);
   root.setProperty('--accent', ACCENTS[t.accent] || ACCENTS.orange);
 }
@@ -447,7 +448,7 @@ function toggleTypePanel() {
     <div class="font-list" data-list="head">${fontList('head')}</div>
     <div class="font-list" data-list="body" hidden>${fontList('body')}</div>
     <label class="tp-row"><span>Size</span><input type="range" min="14" max="22" step="1" id="tp-size" value="${typeSettings.size}"><b id="tp-size-v">${typeSettings.size}px</b></label>
-    <label class="tp-row"><span>Width</span><input type="range" min="560" max="960" step="20" id="tp-width" value="${typeSettings.width}"><b id="tp-width-v">${typeSettings.width}</b></label>
+    <label class="tp-row"><span>Width</span><input type="range" min="560" max="1500" step="20" id="tp-width" value="${typeSettings.width}"><b id="tp-width-v">${typeSettings.width >= 1500 ? 'Full' : typeSettings.width}</b></label>
     <label class="tp-row"><span>Spacing</span><input type="range" min="1.4" max="2.1" step="0.05" id="tp-lead" value="${typeSettings.leading}"><b id="tp-lead-v">${typeSettings.leading}</b></label>
     <div class="tp-row"><span>Accent</span><div class="accents">${Object.entries(ACCENTS).map(([k, v]) => `<button class="acc ${typeSettings.accent === k ? 'on' : ''}" data-acc="${k}" title="${k}" style="background:${v}"></button>`).join('')}</div></div>`;
   document.body.appendChild(panel);
@@ -465,7 +466,7 @@ function toggleTypePanel() {
   });
   const slider = (id, key, fmt) => { const el = panel.querySelector(id); el.oninput = () => { typeSettings[key] = Number(el.value); panel.querySelector(id + '-v').textContent = fmt(el.value); saveType(); }; };
   slider('#tp-size', 'size', v => v + 'px');
-  slider('#tp-width', 'width', v => v);
+  slider('#tp-width', 'width', v => (Number(v) >= 1500 ? 'Full' : v));
   slider('#tp-lead', 'leading', v => v);
   panel.querySelectorAll('[data-acc]').forEach(b => b.onclick = () => {
     typeSettings.accent = b.dataset.acc;

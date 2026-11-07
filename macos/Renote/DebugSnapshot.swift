@@ -21,7 +21,7 @@ enum DebugSnapshot {
         guard UserDefaults.standard.bool(forKey: "floatTest"), let window = web.window, let screen = window.screen ?? NSScreen.main else { return }
         let f = screen.visibleFrame
         window.level = .floating
-        window.setFrame(NSRect(x: f.maxX - 720, y: f.minY + 120, width: 700, height: 460), display: true)
+        window.setFrame(NSRect(x: f.maxX - 1000, y: f.minY + 90, width: 980, height: 560), display: true)
         window.orderFrontRegardless()
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(6))

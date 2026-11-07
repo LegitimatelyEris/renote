@@ -65,10 +65,38 @@ final class RenoteWebView: WKWebView, WKNavigationDelegate, WKUIDelegate, WKScri
             // The page sends its blur setting whenever the Look panel changes.
             WindowBlur.set(window, radius: (settings["blur"] as? NSNumber)?.intValue ?? 30)
         }
+        if let width = (body["sidebar"] as? NSNumber)?.doubleValue {
+            setSidebarFrost(width: width)
+        }
         if let text = body["copy"] as? String {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(text, forType: .string)
         }
+    }
+
+    // MARK: Extra frost behind the sidebar
+
+    /// A heavier, darker blur under the sidebar only, on top of the window's own blur.
+    private var sidebarFrost: NSVisualEffectView?
+
+    private func setSidebarFrost(width: Double) {
+        guard let container = superview else { return }
+        if width <= 0 {
+            sidebarFrost?.isHidden = true
+            return
+        }
+        let fx = sidebarFrost ?? {
+            let v = NSVisualEffectView()
+            v.material = .hudWindow
+            v.blendingMode = .behindWindow
+            v.state = .active
+            v.autoresizingMask = [.height]
+            container.addSubview(v, positioned: .below, relativeTo: self)
+            sidebarFrost = v
+            return v
+        }()
+        fx.isHidden = false
+        fx.frame = NSRect(x: 0, y: 0, width: width, height: container.bounds.height)
     }
 
     // MARK: Links open in the browser

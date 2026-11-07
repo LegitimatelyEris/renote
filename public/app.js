@@ -374,6 +374,7 @@ function wireDock(note, mode) {
 function toggleFocus() {
   document.body.classList.toggle('focus');
   try { localStorage.setItem('renote-focus', document.body.classList.contains('focus') ? '1' : ''); } catch {}
+  reportNoDrag();
 }
 
 function toggleEdit() {
@@ -916,7 +917,10 @@ function reportNoDrag() {
     const r = el.getBoundingClientRect();
     return { x: r.left, y: r.top, w: r.width, h: r.height };
   });
-  native.postMessage({ noDrag: rects, bar: nav.getBoundingClientRect().height });
+  // The Mac app puts an extra-frosted layer behind the sidebar, so tell it how wide it is.
+  const side = $('#sidebar');
+  const sideWidth = side && getComputedStyle(side).display !== 'none' && !document.body.classList.contains('focus') ? side.getBoundingClientRect().width : 0;
+  native.postMessage({ noDrag: rects, bar: nav.getBoundingClientRect().height, sidebar: sideWidth });
 }
 async function newSubjectPrompt() {
   const name = prompt('Name the new subject', 'New Subject');

@@ -24,7 +24,18 @@ enum DebugSnapshot {
         window.setFrame(NSRect(x: f.maxX - 1000, y: f.minY + 90, width: 980, height: 560), display: true)
         window.orderFrontRegardless()
         Task { @MainActor in
-            try? await Task.sleep(for: .seconds(6))
+            if UserDefaults.standard.bool(forKey: "resizeTest") {
+                // Grow the window step by step, like dragging its corner.
+                try? await Task.sleep(for: .seconds(3))
+                for step in 0...60 {
+                    let w = 980 + Double(step) * 8, h = 560 + Double(step) * 4
+                    window.setFrame(NSRect(x: f.maxX - w - 20, y: f.minY + 90, width: w, height: h), display: true)
+                    try? await Task.sleep(for: .milliseconds(30))
+                }
+                try? await Task.sleep(for: .seconds(2))
+            } else {
+                try? await Task.sleep(for: .seconds(6))
+            }
             NSApp.terminate(nil)
         }
     }

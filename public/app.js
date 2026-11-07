@@ -398,7 +398,8 @@ const FONTS = [
   { name: 'Caveat', css: "Caveat, cursive", note: 'Handwritten' },
 ];
 const ACCENTS = { orange: '#f97316', amber: '#f59e0b', lime: '#84cc16', green: '#22c55e', teal: '#14b8a6', blue: '#3b82f6', violet: '#8b5cf6', pink: '#ec4899', red: '#ef4444', white: '#e5e5e5' };
-const DEFAULT_TYPE = { head: 'Inter', body: 'Inter', size: 17, width: 720, leading: 1.7, accent: 'orange', bg: '#0a0a0b', bgAlpha: 0.72, blur: 30 };
+const DEFAULT_TYPE = { head: 'Inter', body: 'Inter', size: 17, width: 720, leading: 1.7, accent: 'orange', bg: '#0a0a0b', bgAlpha: 0.72 };
+const WINDOW_BLUR = 30; // fixed, not a setting
 // Window colours to start from; any colour works through the picker.
 const WINDOW_COLORS = ['#0a0a0b', '#1c1c1e', '#0f172a', '#1e1b4b', '#2e1065', '#3b0a24', '#052e2b', '#14261b', '#3a2a0a', '#5c4a1e'];
 let typeSettings = { ...DEFAULT_TYPE };
@@ -430,7 +431,7 @@ function applyType() {
   // Window tint, and in the Mac app the blur of the desktop behind it.
   root.setProperty('--win-bg', t.bg || DEFAULT_TYPE.bg);
   root.setProperty('--win-alpha', String(t.bgAlpha ?? DEFAULT_TYPE.bgAlpha));
-  window.webkit?.messageHandlers?.renote?.postMessage({ window: { blur: Number(t.blur ?? DEFAULT_TYPE.blur) } });
+  window.webkit?.messageHandlers?.renote?.postMessage({ window: { blur: WINDOW_BLUR } });
 }
 
 let typeSaveTimer;
@@ -461,7 +462,7 @@ function toggleTypePanel() {
     <div class="tp-section">Window</div>
     <div class="win-row"><span>Colour</span><div class="win-swatches">${WINDOW_COLORS.map(c => `<button class="win-swatch ${typeSettings.bg === c ? 'on' : ''}" data-bg="${c}" style="background:${c}" title="${c}"></button>`).join('')}<input class="win-custom" type="color" id="tp-bg" value="${typeSettings.bg}" title="Any colour"></div></div>
     <label class="tp-row"><span>Opacity</span><input type="range" min="0" max="1" step="0.01" id="tp-alpha" value="${typeSettings.bgAlpha}"><b id="tp-alpha-v">${Math.round(typeSettings.bgAlpha * 100)}%</b></label>
-    ${window.renoteNative ? `<label class="tp-row"><span>Blur</span><input type="range" min="0" max="60" step="1" id="tp-blur" value="${typeSettings.blur}"><b id="tp-blur-v">${typeSettings.blur}</b></label>` : '<div class="tp-note">Opacity shows your desktop through the window in the Mac app.</div>'}`;
+    ${window.renoteNative ? '' : '<div class="tp-note">Opacity shows your desktop through the window in the Mac app.</div>'}`;
   document.body.appendChild(panel);
   panel.addEventListener('click', e => e.stopPropagation());
   panel.addEventListener('mousedown', e => e.stopPropagation());
@@ -497,8 +498,6 @@ function toggleTypePanel() {
   };
   const alpha = panel.querySelector('#tp-alpha');
   alpha.oninput = () => { typeSettings.bgAlpha = Number(alpha.value); panel.querySelector('#tp-alpha-v').textContent = Math.round(alpha.value * 100) + '%'; saveType(); };
-  const blur = panel.querySelector('#tp-blur');
-  if (blur) blur.oninput = () => { typeSettings.blur = Number(blur.value); panel.querySelector('#tp-blur-v').textContent = blur.value; saveType(); };
   panel.querySelector('#tp-reset').onclick = () => { typeSettings = { ...DEFAULT_TYPE }; saveType(); panel.remove(); toggleTypePanel(); };
 }
 document.addEventListener('mousedown', e => { if (!e.target.closest('#type-panel, #type-btn')) $('#type-panel')?.remove(); });
@@ -831,16 +830,19 @@ function observeReveals() {
 
 // ---------- Background specks ----------
 function specks() {
+  // Specks sit at fixed spots on a large virtual sky, so resizing the window
+  // reveals or hides them instead of shuffling them around.
   const c = $('#specks');
   const dpr = devicePixelRatio || 1;
   c.width = innerWidth * dpr; c.height = innerHeight * dpr;
   const ctx = c.getContext('2d');
   let seed = 7;
   const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-  for (let i = 0; i < 90; i++) {
-    ctx.fillStyle = `rgba(255,255,255,${0.06 + rnd() * 0.2})`;
-    const r = (0.4 + rnd() * 0.8) * dpr;
-    ctx.beginPath(); ctx.arc(rnd() * c.width, rnd() * c.height, r, 0, 7); ctx.fill();
+  for (let i = 0; i < 260; i++) {
+    const alpha = 0.06 + rnd() * 0.2, r = 0.4 + rnd() * 0.8, x = rnd() * 3840, y = rnd() * 2400;
+    if (x > innerWidth + 2 || y > innerHeight + 2) continue;
+    ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+    ctx.beginPath(); ctx.arc(x * dpr, y * dpr, r * dpr, 0, 7); ctx.fill();
   }
 }
 

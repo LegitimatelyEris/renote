@@ -30,7 +30,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
         window.appearance = NSAppearance(named: .darkAqua)
-        window.minSize = NSSize(width: 820, height: 560)
+        // Wide enough that the page never flips to its narrow, sidebar-less layout.
+        window.minSize = NSSize(width: 960, height: 600)
         // The page sits in a plain container so a blur view can go behind it if needed.
         let container = NSView()
         web.frame = container.bounds

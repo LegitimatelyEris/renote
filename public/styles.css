@@ -479,7 +479,6 @@ body.focus .sidebar { visibility: hidden; padding: 0; border: 0; }
 .acc { width: 20px; height: 20px; border-radius: 50%; border: 0; padding: 0; }
 .acc.on { outline: 2px solid #fff; outline-offset: 2px; }
 
-@media (max-width: 1100px) { .page .page-h2 .num { position: static; display: block; margin-bottom: 6px; } }
 @media (max-width: 900px) {
   .page-wrap { width: calc(100% - 32px); padding-top: 40px; }
   .page .page-title, .src.k-h1 { font-size: 2.2em; }
@@ -567,7 +566,7 @@ body.focus .sidebar { visibility: hidden; padding: 0; border: 0; }
 .ProseMirror-selectednode { outline: none; }
 .ProseMirror-gapcursor { display: none; }
 
-@media (max-width: 1100px) { .doc h2::before { position: static; display: block; margin-bottom: 6px; } }
+@media (max-width: 900px) { .doc h2::before { position: static; display: block; margin-bottom: 6px; } }
 @media (max-width: 900px) { .doc h1 { font-size: 2.2em; } }
 
 

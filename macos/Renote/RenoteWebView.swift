@@ -22,7 +22,12 @@ final class RenoteWebView: WKWebView, WKNavigationDelegate, WKUIDelegate, WKScri
         controller.add(WeakHandler(self), name: "renote")
         navigationDelegate = self
         uiDelegate = self
+        // Fully see-through: no page background, no under-page colour, no opaque layer.
         setValue(false, forKey: "drawsBackground")
+        underPageBackgroundColor = .clear
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.clear.cgColor
+        layer?.isOpaque = false
         allowsBackForwardNavigationGestures = true
     }
 

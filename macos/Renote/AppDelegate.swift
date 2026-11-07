@@ -45,6 +45,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         web.start()
         #if DEBUG
         DebugSnapshot.runIfRequested(web)
+        DebugSnapshot.floatTestIfRequested(web)
         #endif
     }
 

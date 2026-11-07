@@ -18,13 +18,22 @@ enum WindowBlur {
     /// Makes the window see-through so the page decides how much shows through.
     static func prepare(_ window: NSWindow) {
         window.isOpaque = false
-        window.backgroundColor = .clear
+        // Not fully clear: the window server only blurs behind pixels that exist,
+        // so use an almost-invisible colour (the same trick Terminal-style apps use).
+        window.backgroundColor = NSColor.black.withAlphaComponent(0.001)
         window.hasShadow = true
+        if let content = window.contentView {
+            content.wantsLayer = true
+            content.layer?.backgroundColor = NSColor.clear.cgColor
+            content.layer?.isOpaque = false
+        }
+        window.invalidateShadow()
     }
 
     static func set(_ window: NSWindow, radius: Int) {
         if let (connection, setBlur) = functions {
             _ = setBlur(connection(), Int32(window.windowNumber), Int32(max(0, min(radius, 100))))
+            window.invalidateShadow()
         } else {
             fallback(window, on: radius > 0)
         }

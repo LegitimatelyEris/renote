@@ -4,6 +4,10 @@ A minimalist notes website that runs on your Mac and makes revision more fun. Th
 
 Notes are plain Markdown files in `~/Documents/Renote`. Sub-folders are **subjects**. Nothing leaves your computer.
 
+## The editor
+
+The page editor is [Tiptap](https://tiptap.dev), bundled into `public/vendor/tiptap.js` so everything works offline. `public/doc.js` converts between Renote's Markdown and the editor. To rebuild the bundle: `cd editor && npm install && npm run build`.
+
 ## Mac app
 
 `macos/` wraps the site in a native window. The site is bundled inside the app and the app reads and writes your notes itself, so there's no server and no Node needed. The top bar doubles as the title bar, and the menus have New Note (⌘N), Search (⌘F), Read, Write and Revise (⌘1 ⌘2 ⌘3) and Progress (⌘⇧P).
@@ -31,13 +35,13 @@ Use `RENOTE_DIR=/some/folder npm start` to keep notes somewhere else, or `PORT=5
 
 ## What's in it
 
-- **A page, not a box**: each note is one blog-style page (title, lede, numbered sections). Flip the **View / Edit** switch in the bottom-right corner (or press ⌘E) and click any part of the page to edit it right there, in the page's own type. Enter starts a new block, Backspace at the start joins it to the one above, ↑/↓ move between blocks, and typing `/` in an empty block opens a menu of components. A small bar above the block you're editing does bold, italic, highlight, gaps and colours.
+- **A page you type on**: each note is one article-style page (title, intro, numbered sections). Flip the **View / Edit** switch in the bottom-right corner (⌘E), or double-click anywhere while reading, and the whole page becomes a live document: click anywhere and type, and it stays formatted as you go. Markdown shortcuts work as you type (`# ` heading, `- ` list, `[ ] ` checklist, `> ` quote, `**bold**`, `==highlight==`, `{{gap}}`), selecting text shows a toolbar for bold, italic, underline, strike, highlight, gap, code, links and colours, and `/` opens a menu of headings, lists and revision components. Flashcards, definitions, quizzes, callouts, toggles and tables sit in the page as cards: click one to edit its Markdown, Esc to finish. Notes are still saved as plain Markdown.
 - **Your type**: the **Aa** button sets the heading font and body font separately (Inter, Geist, Space Grotesk, Atkinson Hyperlegible, Newsreader, Literata, Fraunces, Instrument Serif, JetBrains Mono, IBM Plex Mono, Caveat), plus size, page width, line spacing and the accent colour. Saved to `.renote/settings.json`.
 - **View**: flashcards flip, quizzes mark themselves, gaps reveal on click and checklists tick (and save). The ⋯ menu has Edit as Markdown, Rename, Trash and Hide sidebar (⌘\\).
 - **Revise**: every flashcard, definition, quiz and gap in the note becomes a shuffled deck. Space flips, → means got it, ← means again.
 - **Progress**: every finished Revise session is logged to `.renote/log.json` in your notes folder, giving sessions, accuracy, a day streak and mastery per note. The banner at the top tells you what hasn't been revised this week.
 
-Shortcuts: `⌘E` view/edit, `/` search, `n` new note, `1` `2` `3` view, edit, revise, `⌘\\` hide sidebar, and `⌘B` `⌘I` `⌘U` `⌘⇧H` `⌘⇧G` while editing.
+Shortcuts: `⌘E` view/edit, `/` search, `n` new note, `1` `2` `3` view, edit, revise, `⌘\\` hide sidebar, and `⌘B` `⌘I` `⌘U` `⌘⇧S` `⌘⇧H` `⌘⇧G` `⌘⇧C` while editing.
 
 Deleted notes go to `.renote/trash` inside your notes folder, so nothing is lost.
 

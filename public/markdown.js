@@ -18,7 +18,7 @@ export const CALLOUTS = {
 const CALLOUT_ALIASES = { hint: 'tip', caution: 'warning', attention: 'warning', error: 'danger', bug: 'danger', fail: 'danger', faq: 'question', help: 'question', tldr: 'summary', abstract: 'summary', memo: 'remember', key: 'remember', keypoint: 'remember' };
 export const calloutStyle = raw => { const k = raw.toLowerCase(); return CALLOUTS[k] ? k : CALLOUT_ALIASES[k] || 'note'; };
 
-const COLORS = { red: '#f87171', orange: '#fb923c', yellow: '#facc15', green: '#4ade80', mint: '#6ee7b7', teal: '#2dd4bf', blue: '#60a5fa', indigo: '#818cf8', purple: '#c084fc', pink: '#f472b6', brown: '#c8a27a', gray: '#a1a1aa', grey: '#a1a1aa' };
+export const COLORS = { red: '#f87171', orange: '#fb923c', yellow: '#facc15', green: '#4ade80', mint: '#6ee7b7', teal: '#2dd4bf', blue: '#60a5fa', indigo: '#818cf8', purple: '#c084fc', pink: '#f472b6', brown: '#c8a27a', gray: '#a1a1aa', grey: '#a1a1aa' };
 
 // ---------- Blocks ----------
 
@@ -207,7 +207,7 @@ export function renderInline(s) {
     const color = /^\{(\w+)\|([^}]*)\}/.exec(rest);
     if (color && !rest.startsWith('{{') && COLORS[color[1].toLowerCase()]) {
       flush();
-      out += `<span style="color:${COLORS[color[1].toLowerCase()]}">${renderInline(color[2])}</span>`;
+      out += `<span data-color="${color[1].toLowerCase()}" style="color:${COLORS[color[1].toLowerCase()]}">${renderInline(color[2])}</span>`;
       i += color[0].length;
       continue;
     }

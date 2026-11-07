@@ -1,4 +1,5 @@
 import { parse, renderInline, plain, studyCards, CALLOUTS } from './markdown.js';
+import { createPageEditor } from './doc.js';
 
 // ---------- Icons (simple line icons) ----------
 const P = {
@@ -134,6 +135,7 @@ function parseHash() {
 
 async function route() {
   const r = parseHash();
+  if (r.view !== 'note' && pageEditor) { pageEditor.flush(); pageEditor.destroy(); pageEditor = null; }
   document.querySelectorAll('.links a').forEach(a => a.classList.toggle('active',
     (a.dataset.nav === 'home' && (r.view === 'home' || r.view === 'note')) || a.dataset.nav === r.view || (a.dataset.nav === 'revise' && r.view === 'revise-all')));
   if (r.view === 'note') {
@@ -231,10 +233,14 @@ async function newNote(subject = null) {
 // 'revise' = card deck, 'source' (or old 'write') = raw Markdown.
 const EDIT_KEY = 'renote-editing';
 
+let pageEditor = null; // the live document for the open note
+
 function renderNote(main, mode) {
   const note = current();
   if (!note) { location.hash = '#/'; return; }
   if (mode === 'write') mode = 'source';
+  pageEditor?.destroy();
+  pageEditor = null;
   const blocks = parse(state.text);
   const cards = studyCards(blocks);
   const words = state.text.split(/\s+/).filter(Boolean).length;
@@ -252,40 +258,64 @@ function renderNote(main, mode) {
   } else if (mode === 'source') {
     main.innerHTML = `<article class="page-wrap">${head}</article>` + writeView();
   } else {
-    main.innerHTML = `<article class="page-wrap ${editing ? 'editing' : ''}">${head}<div class="page" id="page">${pageHtml(blocks, editing)}</div>
-      ${editing ? `<button class="blk-new" id="blk-new">${icon('plus', 14)} Click to add a block, or type <kbd>/</kbd> in an empty one for components</button>` : ''}
-    </article>`;
+    main.innerHTML = `<article class="page-wrap ${editing ? 'editing' : ''}" id="page-wrap">${head}<div class="page doc" id="page"></div></article>`;
   }
   main.insertAdjacentHTML('beforeend', dockHtml(note, mode, cards.length));
   wireDock(note, mode);
 
   if (mode === 'source') wireWrite();
   else if (mode === 'revise') startRevise($('#revise'), cards, note);
-  else if (editing) wireEditor();
-  else wireBlocks(main);
+  else mountPage(editing);
 }
 
-/** The whole note as one page. Headings, lede and sections all come from the Markdown. */
-function pageHtml(blocks, editing) {
-  const out = [];
-  let section = 0;
-  for (let i = 0; i < blocks.length; i++) {
-    const b = blocks[i];
-    let group = [b];
-    if (b.type === 'definition') while (blocks[i + 1]?.type === 'definition') group.push(blocks[++i]);
-    let html;
-    if (b.type === 'heading' && b.level === 1) html = `<h1 class="page-title reveal">${renderInline(b.text)}</h1>`;
-    else if (b.type === 'heading' && b.level === 2) {
-      section++;
-      html = `<h2 class="page-h2 reveal"><span class="num">${String(section).padStart(2, '0')}</span>${renderInline(b.text)}</h2>`;
-    } else if (b.type === 'paragraph' && i === 1 && blocks[0]?.type === 'heading' && blocks[0].level === 1 && !b.text.includes('{{')) {
-      html = `<p class="lede">${renderInline(b.text)}</p>`;
-    } else html = blocksHtml(group);
-    const s = group[0].start, e = group.at(-1).end;
-    out.push(editing ? `<div class="blk" data-s="${s}" data-e="${e}">${html}</div>` : html);
+/** Mounts the note as a live document: read-only in View, typed into directly in Edit. */
+function mountPage(editing) {
+  const page = $('#page');
+  pageEditor = createPageEditor({
+    element: page,
+    text: state.text,
+    editable: editing,
+    renderComponent: (src, el, editable) => {
+      el.innerHTML = blocksHtml(parse(src));
+      // Cards are measured for flipping, so wire them once they're on screen.
+      if (!editable) setTimeout(() => wireBlocks(el), 0);
+    },
+    onChange: md => { if (md !== state.text) setText(md, { render: false }); },
+  });
+  // Gaps reveal on click while reading.
+  page.addEventListener('click', e => {
+    const gap = e.target.closest('.gap');
+    if (gap && !pageEditor?.editor.isEditable) gap.classList.toggle('open');
+  });
+  // Double-click anywhere while reading to start editing right there.
+  page.addEventListener('dblclick', e => {
+    if (pageEditor?.editor.isEditable) return;
+    const at = pageEditor.editor.view.posAtCoords({ left: e.clientX, top: e.clientY });
+    setEditing(true, at?.pos);
+  });
+  // Clicking the empty space under the text puts the cursor at the end.
+  $('#page-wrap').addEventListener('mousedown', e => {
+    if (!pageEditor?.editor.isEditable || e.target.closest('.ProseMirror, .page-meta, a, button')) return;
+    e.preventDefault();
+    pageEditor.editor.commands.focus('end');
+  });
+  if (editing) {
+    const ed = pageEditor.editor;
+    const first = ed.state.doc.firstChild;
+    // A brand-new note opens with its title selected, ready to type over.
+    if (first?.type.name === 'heading' && /^Untitled( \d+)?$/.test(first.textContent) && ed.state.doc.childCount <= 2) {
+      ed.chain().focus().setTextSelection({ from: 1, to: 1 + first.content.size }).run();
+    } else ed.commands.focus('start', { scrollIntoView: false });
   }
-  if (!blocks.length) out.push(editing ? '' : `<p class="empty-page">This page is empty. Press <kbd>⌘E</kbd> or the Edit switch to start writing.</p>`);
-  return out.join('');
+  observeReveals();
+}
+
+/** Flips the open page between View and Edit without reloading it. */
+function setEditing(on, pos) {
+  const r = parseHash();
+  if (r.view !== 'note') return;
+  sessionStorage.setItem('renote-flip', JSON.stringify({ pos: pos ?? null }));
+  location.hash = noteHref(r.path, on ? 'edit' : 'read');
 }
 
 // ---------- Corner dock: View / Edit, type settings, revise, more ----------
@@ -349,375 +379,7 @@ function toggleFocus() {
 function toggleEdit() {
   const r = parseHash();
   if (r.view !== 'note') return;
-  location.hash = noteHref(r.path, r.mode === 'edit' ? 'read' : 'edit');
-}
-
-// ---------- In-place editor ----------
-// Each block on the page maps to a range of source lines. Clicking a block swaps it
-// for a borderless text area set in the same type, holding that block's Markdown.
-// Typing writes straight back into the note; leaving the block re-renders it.
-let active = null; // { blk, ta, s, e, prefix }
-
-const SLASH = [
-  { key: 'text', label: 'Text', icon: 'lines', text: '' },
-  { key: 'h1', label: 'Title', icon: 'lines', prefix: '# ', text: '' },
-  { key: 'h2', label: 'Section heading', icon: 'lines', prefix: '## ', text: '' },
-  { key: 'h3', label: 'Sub-heading', icon: 'lines', prefix: '### ', text: '' },
-  { key: 'flashcard', label: 'Flashcard', icon: 'cards', text: 'Q: |\nA: ' },
-  { key: 'definition', label: 'Definition', icon: 'dict', text: '| :: ' },
-  { key: 'quiz', label: 'Quiz', icon: 'quiz', text: '? |\n- ( ) Wrong answer\n- (x) Right answer\n- ( ) Wrong answer' },
-  { key: 'gap', label: 'Gap fill', icon: 'eye', text: 'The answer is {{|}}.' },
-  { key: 'todo', label: 'Checklist', icon: 'todo', text: '- [ ] |' },
-  { key: 'bullets', label: 'Bulleted list', icon: 'list', text: '- |' },
-  { key: 'numbers', label: 'Numbered list', icon: 'list', text: '1. |' },
-  ...Object.entries(CALLOUTS).map(([k, c]) => ({ key: 'callout ' + k, label: 'Callout: ' + c.label, icon: c.icon, text: `> [!${k}] ${c.label}\n> |` })),
-  { key: 'toggle', label: 'Toggle', icon: 'toggle', text: '+++ |\nHidden details\n+++' },
-  { key: 'quote', label: 'Quote', icon: 'bubble', text: '> |' },
-  { key: 'table', label: 'Table', icon: 'table', text: '| | Column |\n|---|---|\n| Cell | Cell |' },
-  { key: 'code', label: 'Code block', icon: 'code', text: '```\n|\n```' },
-  { key: 'divider', label: 'Divider', icon: 'lines', text: '---' },
-  { key: 'image', label: 'Image', icon: 'file', text: '![|](image.png)' },
-];
-
-const srcLines = () => state.text.split('\n');
-
-function blockKind(value, prefix) {
-  const first = (prefix + value).split('\n')[0];
-  const h = /^(#{1,6}) /.exec(first);
-  if (h) return 'h' + Math.min(h[1].length, 3);
-  if (/^(```|\|)/.test(first)) return 'mono';
-  if (/^(\s*[-*+] |\s*\d+[.)] |>|\? |[Qq]:)/.test(first)) return 'struct';
-  return 'p';
-}
-
-function wireEditor() {
-  const page = $('#page');
-  page.addEventListener('mousedown', e => {
-    const blk = e.target.closest('.blk');
-    if (!blk || blk.classList.contains('active')) return;
-    e.preventDefault();
-    beginEdit(blk, 'click', e);
-  });
-  $('#blk-new').onclick = () => { if (active) commit(false); addBlockAfter(lastLine(), ''); };
-  if (!page.querySelector('.blk')) addBlockAfter(lastLine(), '');
-  const pending = sessionStorage.getItem(EDIT_KEY);
-  if (pending) {
-    sessionStorage.removeItem(EDIT_KEY);
-    const { s, caret } = JSON.parse(pending);
-    const blk = [...page.querySelectorAll('.blk')].find(b => +b.dataset.s === s);
-    if (blk) beginEdit(blk, caret);
-  }
-}
-
-const lastLine = () => { const L = srcLines(); let n = L.length - 1; while (n > 0 && !L[n].trim()) n--; return L[n]?.trim() ? n : -1; };
-
-function beginEdit(blk, caret = 'end', evt) {
-  if (active) commit(false);
-  const s = +blk.dataset.s, e = +blk.dataset.e;
-  const src = srcLines().slice(s, e + 1).join('\n');
-  // Headings hide their #s, so editing a heading looks like editing the heading.
-  const h = !src.includes('\n') && /^(#{1,6} )(.*)$/.exec(src);
-  const prefix = h ? h[1] : '';
-  const value = h ? h[2] : src;
-  const ta = document.createElement('textarea');
-  ta.className = 'src k-' + blockKind(value, prefix);
-  ta.value = value;
-  ta.spellcheck = true;
-  ta.rows = 1;
-  ta.placeholder = prefix ? 'Heading' : "Write something, or type / for components";
-  blk.classList.add('active');
-  blk.replaceChildren(ta, formatBar());
-  active = { blk, ta, s, e, prefix };
-  autosize(ta);
-  ta.focus({ preventScroll: true });
-  let pos = ta.value.length;
-  if (caret === 'start') pos = 0;
-  else if (typeof caret === 'number') pos = Math.min(caret, ta.value.length);
-  ta.setSelectionRange(pos, pos);
-  ta.addEventListener('input', onInput);
-  ta.addEventListener('keydown', onKey);
-  ta.addEventListener('blur', () => setTimeout(() => { if (active?.ta === ta && !document.activeElement?.closest('.fmt, .slash')) commit(true); }, 120));
-}
-
-function autosize(ta) { ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px'; }
-
-/** Writes the active text area back into the note's source. */
-function apply() {
-  const { ta, s, e, prefix } = active;
-  const value = prefix && !/^#{1,6} /.test(ta.value) ? prefix + ta.value : ta.value;
-  const L = srcLines();
-  const next = value.split('\n');
-  L.splice(s, e - s + 1, ...next);
-  const delta = next.length - (e - s + 1);
-  if (delta) {
-    document.querySelectorAll('.blk').forEach(b => {
-      if (b !== active.blk && +b.dataset.s > e) { b.dataset.s = +b.dataset.s + delta; b.dataset.e = +b.dataset.e + delta; }
-    });
-    active.e = e + delta;
-    active.blk.dataset.e = active.e;
-  }
-  setText(L.join('\n'), { render: false });
-}
-
-function onInput() {
-  const { ta } = active;
-  ta.className = 'src k-' + blockKind(ta.value, active.prefix);
-  autosize(ta);
-  apply();
-  slashMenu();
-}
-
-/** Leaves the active block; empty blocks disappear. Re-renders the page when asked. */
-function commit(rerender) {
-  if (!active) return;
-  const { ta, s, e } = active;
-  closeSlash();
-  if (!ta.value.trim()) {
-    const L = srcLines();
-    // Drop the block's lines and one surrounding blank line.
-    let from = s, count = e - s + 1;
-    if (from > 0 && !L[from - 1].trim()) { from--; count++; }
-    L.splice(from, count);
-    setText(L.join('\n'), { render: false });
-  }
-  active = null;
-  if (rerender) rerenderPage();
-}
-
-function rerenderPage(focus) {
-  const page = $('#page');
-  if (!page) return;
-  const y = scrollY;
-  if (focus) sessionStorage.setItem(EDIT_KEY, JSON.stringify(focus));
-  page.innerHTML = pageHtml(parse(state.text), true);
-  scrollTo(0, y);
-  const pending = sessionStorage.getItem(EDIT_KEY);
-  if (pending) {
-    sessionStorage.removeItem(EDIT_KEY);
-    const { s, caret } = JSON.parse(pending);
-    const blk = [...page.querySelectorAll('.blk')].find(b => +b.dataset.s === s);
-    if (blk) beginEdit(blk, caret);
-  }
-  observeReveals();
-}
-
-/** Inserts a new empty block after source line `after` and starts editing it. */
-function addBlockAfter(after, text, caret) {
-  const L = srcLines();
-  const at = after + 1;
-  const insert = after < 0 ? [text, ''] : ['', text, ''];
-  L.splice(at, 0, ...insert);
-  setText(L.join('\n'), { render: false });
-  const lineOfNew = after < 0 ? 0 : at + 1;
-  if (active) active = null;
-  // Put a placeholder block in place and edit it right away.
-  const page = $('#page');
-  page.innerHTML = pageHtml(parse(state.text), true);
-  let blk = [...page.querySelectorAll('.blk')].find(b => +b.dataset.s === lineOfNew);
-  if (!blk) {
-    blk = document.createElement('div');
-    blk.className = 'blk';
-    blk.dataset.s = blk.dataset.e = lineOfNew;
-    const before = [...page.querySelectorAll('.blk')].find(b => +b.dataset.s > lineOfNew);
-    page.insertBefore(blk, before || null);
-  }
-  beginEdit(blk, caret ?? 'end');
-}
-
-function neighbour(dir) {
-  const all = [...document.querySelectorAll('#page .blk')];
-  return all[all.indexOf(active.blk) + dir];
-}
-
-function onKey(e) {
-  const { ta } = active;
-  const mod = e.metaKey || e.ctrlKey;
-  if (slashOpen() && ['ArrowDown', 'ArrowUp', 'Enter', 'Escape', 'Tab'].includes(e.key)) { slashKey(e); return; }
-  if (mod && !e.shiftKey && e.key.toLowerCase() === 'b') { e.preventDefault(); wrapSel('**'); return; }
-  if (mod && !e.shiftKey && e.key.toLowerCase() === 'i') { e.preventDefault(); wrapSel('*'); return; }
-  if (mod && !e.shiftKey && e.key.toLowerCase() === 'u') { e.preventDefault(); wrapSel('++'); return; }
-  if (mod && e.shiftKey && e.key.toLowerCase() === 'h') { e.preventDefault(); wrapSel('=='); return; }
-  if (mod && e.shiftKey && e.key.toLowerCase() === 'g') { e.preventDefault(); wrapSel('{{', '}}'); return; }
-  if (e.key === 'Escape') { e.preventDefault(); ta.blur(); return; }
-
-  const { selectionStart: a, selectionEnd: b, value } = ta;
-  const lineStart = value.lastIndexOf('\n', a - 1) + 1;
-  const lineEndIdx = value.indexOf('\n', a);
-  const line = value.slice(lineStart, lineEndIdx < 0 ? value.length : lineEndIdx);
-
-  if (e.key === 'Enter' && !e.shiftKey && !mod) {
-    const inFence = /^```/.test(value) || /^\+\+\+/.test(value);
-    if (inFence) return; // newlines are normal inside code and toggles
-    // Lists, checklists, quotes and callouts carry on with their marker.
-    const m = /^(\s*)([-*+] \[[ xX]\] |[-*+] \([ xX]\) |[-*+] |(\d+)[.)] |> ?)/.exec(line);
-    if (m) {
-      e.preventDefault();
-      if (line.trim() === m[2].trim()) {
-        // Enter on an empty item ends the list and starts a new block.
-        const before = value.slice(0, lineStart).replace(/\n$/, '');
-        ta.value = before;
-        apply();
-        const after = active.e;
-        if (!before.trim()) { commit(false); }
-        addBlockAfter(after, '');
-        return;
-      }
-      let marker = m[2].replace(/\[[xX]\]/, '[ ]').replace(/\([xX]\)/, '( )');
-      if (m[3]) marker = `${Number(m[3]) + 1}. `;
-      ta.setRangeText('\n' + m[1] + marker, a, b, 'end');
-      onInput();
-      return;
-    }
-    if (/^(\? |[Qq]:|\|)/.test(value)) return; // quizzes, flashcards, tables: plain newline
-    // Paragraphs and headings split into a new block at the caret.
-    e.preventDefault();
-    const rest = value.slice(b);
-    ta.value = value.slice(0, a);
-    apply();
-    const after = active.e;
-    const keep = ta.value.trim();
-    commit(false);
-    addBlockAfter(keep ? after : after - 0, rest, 'start');
-    return;
-  }
-
-  if (e.key === 'Backspace' && a === 0 && b === 0) {
-    if (active.prefix) {
-      // Backspace at the start of a heading turns it back into text.
-      e.preventDefault();
-      active.prefix = '';
-      apply();
-      ta.className = 'src k-' + blockKind(ta.value, '');
-      return;
-    }
-    const prev = neighbour(-1);
-    if (!prev) return;
-    e.preventDefault();
-    const prevSrc = srcLines().slice(+prev.dataset.s, +prev.dataset.e + 1).join('\n');
-    const plainPrev = !prevSrc.includes('\n') && !/^(```|\||>|\? |[Qq]:|[-*+] |\d+[.)] |---)/.test(prevSrc);
-    const plainCur = !value.includes('\n');
-    if (!value.trim()) {
-      ta.value = '';
-      commit(false);
-      rerenderPage({ s: +prev.dataset.s, caret: 'end' });
-    } else if (plainPrev && plainCur) {
-      // Merge this block into the one above.
-      const ps = +prev.dataset.s, joinAt = prevSrc.replace(/^#{1,6} /, '').length;
-      const L = srcLines();
-      L.splice(active.s, active.e - active.s + 1);
-      if (!L[active.s - 1]?.trim()) L.splice(active.s - 1, 1);
-      L[ps] = L[ps] + value;
-      active = null;
-      setText(L.join('\n'), { render: false });
-      rerenderPage({ s: ps, caret: joinAt });
-    }
-    return;
-  }
-
-  if (e.key === 'ArrowUp' && !value.slice(0, a).includes('\n')) {
-    const prev = neighbour(-1);
-    if (prev) { e.preventDefault(); const s = +prev.dataset.s; commit(false); rerenderPage({ s, caret: 'end' }); }
-  } else if (e.key === 'ArrowDown' && !value.slice(b).includes('\n')) {
-    const next = neighbour(1);
-    if (next) {
-      e.preventDefault();
-      // Lines above may vanish if this block was empty, so remember by order.
-      const order = [...document.querySelectorAll('#page .blk')].indexOf(next);
-      const wasEmpty = !value.trim();
-      commit(false);
-      const blocks = parse(state.text);
-      rerenderPage();
-      const all = [...document.querySelectorAll('#page .blk')];
-      const target = all[wasEmpty ? order - 1 : order];
-      if (target) beginEdit(target, 'start');
-      void blocks;
-    }
-  }
-}
-
-function wrapSel(open, close = open) {
-  const { ta } = active;
-  const { selectionStart: a, selectionEnd: b } = ta;
-  const sel = ta.value.slice(a, b);
-  ta.setRangeText(open + sel + close, a, b, 'select');
-  ta.setSelectionRange(a + open.length, a + open.length + sel.length);
-  onInput();
-}
-
-/** Little formatting bar that sits on the corner of the block being edited. */
-function formatBar() {
-  const bar = document.createElement('div');
-  bar.className = 'fmt';
-  bar.innerHTML = `
-    <button data-w="**" title="Bold (⌘B)"><b>B</b></button>
-    <button data-w="*" title="Italic (⌘I)"><i>I</i></button>
-    <button data-w="++" title="Underline (⌘U)"><u>U</u></button>
-    <button data-w="~~" title="Strikethrough"><s>S</s></button>
-    <button data-w="==" title="Highlight (⌘⇧H)">${icon('mark', 13)}</button>
-    <button data-w="{{|}}" title="Hide as a gap (⌘⇧G)">${icon('eye', 13)}</button>
-    <button data-w="\`" title="Code">${icon('code', 13)}</button>
-    <span class="fmt-sep"></span>
-    ${['red', 'orange', 'yellow', 'green', 'blue', 'purple', 'pink'].map(c => `<button class="sw" data-w="{${c}||}" title="${c[0].toUpperCase() + c.slice(1)} text" style="--sw:var(--c-${c})"></button>`).join('')}`;
-  bar.addEventListener('mousedown', e => {
-    e.preventDefault(); // keep focus and selection in the text area
-    const btn = e.target.closest('[data-w]');
-    if (!btn) return;
-    const w = btn.dataset.w;
-    if (w.startsWith('{') && w.endsWith('||}')) wrapSel(w.slice(0, -2), '}');
-    else if (w === '{{|}}') wrapSel('{{', '}}');
-    else wrapSel(w);
-  });
-  return bar;
-}
-
-// Slash menu: type / at the start of an empty block to insert a component.
-let slash = null; // { el, items, index }
-const slashOpen = () => !!slash;
-function slashMenu() {
-  const { ta } = active;
-  const m = /^\/([\w ]*)$/.exec(ta.value);
-  if (!m || active.prefix) { closeSlash(); return; }
-  const q = m[1].toLowerCase();
-  const items = SLASH.filter(it => it.label.toLowerCase().includes(q) || it.key.includes(q));
-  if (!slash) {
-    slash = { el: document.createElement('div'), items, index: 0 };
-    slash.el.className = 'slash';
-    active.blk.appendChild(slash.el);
-    slash.el.addEventListener('mousedown', e => {
-      e.preventDefault();
-      const b = e.target.closest('[data-i]');
-      if (b) pickSlash(slash.items[+b.dataset.i]);
-    });
-  }
-  slash.items = items;
-  slash.index = Math.min(slash.index, Math.max(0, items.length - 1));
-  slash.el.innerHTML = items.length
-    ? items.map((it, i) => `<button data-i="${i}" class="${i === slash.index ? 'on' : ''}">${icon(it.icon, 14)}${esc(it.label)}</button>`).join('')
-    : '<div class="none">No matching component</div>';
-  slash.el.querySelector('.on')?.scrollIntoView({ block: 'nearest' });
-}
-function closeSlash() { slash?.el.remove(); slash = null; }
-function slashKey(e) {
-  e.preventDefault();
-  if (e.key === 'Escape') { closeSlash(); return; }
-  if (e.key === 'ArrowDown') slash.index = (slash.index + 1) % Math.max(1, slash.items.length);
-  else if (e.key === 'ArrowUp') slash.index = (slash.index - 1 + slash.items.length) % Math.max(1, slash.items.length);
-  else if (slash.items[slash.index]) { pickSlash(slash.items[slash.index]); return; }
-  slashMenu();
-}
-function pickSlash(item) {
-  closeSlash();
-  const { ta } = active;
-  active.prefix = item.prefix || '';
-  const caret = item.text.indexOf('|');
-  ta.value = item.text.replace('|', '');
-  ta.className = 'src k-' + blockKind(ta.value, active.prefix);
-  ta.placeholder = active.prefix ? 'Heading' : ta.placeholder;
-  autosize(ta);
-  const pos = caret < 0 ? ta.value.length : caret;
-  ta.setSelectionRange(pos, pos);
-  apply();
-  if (item.key === 'divider') { commit(false); addBlockAfter(active?.e ?? lastLine(), ''); }
+  setEditing(r.mode !== 'edit');
 }
 
 // ---------- Type settings ----------
@@ -1167,7 +829,7 @@ $('#search').oninput = e => {
 };
 document.addEventListener('keydown', e => {
   const mod = e.metaKey || e.ctrlKey;
-  if (mod && !e.shiftKey && e.key.toLowerCase() === 'e') { e.preventDefault(); if (active) commit(false); toggleEdit(); return; }
+  if (mod && !e.shiftKey && e.key.toLowerCase() === 'e') { e.preventDefault(); toggleEdit(); return; }
   if (mod && e.key === '\\') { e.preventDefault(); toggleFocus(); return; }
   if (e.target.closest('input, textarea') || e.metaKey || e.ctrlKey || e.altKey) {
     if ((e.metaKey || e.ctrlKey) && e.key === 's') { e.preventDefault(); saveNow().then(() => toast('Saved')); }
@@ -1178,7 +840,7 @@ document.addEventListener('keydown', e => {
   else if (e.key === 'n') newNote(current()?.subject || null);
   else if (r.view === 'note' && ['1', '2', '3'].includes(e.key)) location.hash = noteHref(r.path, ['read', 'edit', 'revise'][e.key - 1]);
 });
-addEventListener('beforeunload', e => { if (state.text !== state.saved) { saveNow(); e.preventDefault(); } });
+addEventListener('beforeunload', e => { pageEditor?.flush(); if (state.text !== state.saved) { saveNow(); e.preventDefault(); } });
 let lastRoute = parseHash();
 addEventListener('hashchange', async () => {
   reviseKeys = null;
@@ -1186,7 +848,29 @@ addEventListener('hashchange', async () => {
   const sameNote = r.view === 'note' && lastRoute.view === 'note' && r.path === lastRoute.path && ['read', 'edit'].includes(r.mode) && ['read', 'edit'].includes(lastRoute.mode);
   const y = scrollY;
   lastRoute = r;
-  if (active) commit(false);
+  if (sameNote && pageEditor) {
+    // Same page, just switch between reading and typing.
+    const editing = r.mode === 'edit';
+    pageEditor.setEditable(editing);
+    $('#page-wrap')?.classList.toggle('editing', editing);
+    const note = current();
+    $('#dock')?.remove();
+    $('#main').insertAdjacentHTML('beforeend', dockHtml(note, r.mode, studyCards(parse(state.text)).length));
+    wireDock(note, r.mode);
+    const flip = JSON.parse(sessionStorage.getItem('renote-flip') || '{}');
+    sessionStorage.removeItem('renote-flip');
+    if (editing) {
+      if (flip.pos != null) pageEditor.editor.chain().focus().setTextSelection(flip.pos).run();
+      else pageEditor.editor.commands.focus(null, { scrollIntoView: false });
+    } else {
+      pageEditor.flush();
+      saveNow();
+    }
+    renderSidebar(r);
+    return;
+  }
+  sessionStorage.removeItem('renote-flip');
+  if (pageEditor) pageEditor.flush();
   await route();
   scrollTo(0, sameNote ? y : 0);
 });
@@ -1221,7 +905,7 @@ window.renote = {
   focusSearch: () => $('#search').focus(),
   go: hash => { location.hash = hash; },
   setMode: mode => { const r = parseHash(); if (r.view === 'note') location.hash = noteHref(r.path, mode === 'write' ? 'edit' : mode); },
-  toggleEdit: () => { if (active) commit(false); toggleEdit(); },
+  toggleEdit: () => toggleEdit(),
   toggleSidebar: toggleFocus,
   showType: toggleTypePanel,
 };

@@ -1,0 +1,19 @@
+{
+  "name": "renote-editor-bundle",
+  "private": true,
+  "description": "Builds public/vendor/tiptap.js, the rich-text editor bundled into Renote. Only needed when updating the editor.",
+  "type": "module",
+  "scripts": {
+    "build": "esbuild entry.js --bundle --format=esm --minify --target=safari16 --outfile=../public/vendor/tiptap.js"
+  },
+  "devDependencies": {
+    "@tiptap/core": "^3.33.0",
+    "@tiptap/extension-code": "^3.33.0",
+    "@tiptap/extension-highlight": "^3.33.0",
+    "@tiptap/extension-list": "^3.33.0",
+    "@tiptap/extensions": "^3.33.0",
+    "@tiptap/pm": "^3.33.0",
+    "@tiptap/starter-kit": "^3.33.0",
+    "esbuild": "^0.28.2"
+  }
+}
